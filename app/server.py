@@ -33,6 +33,13 @@ DRAIN_ENERGY_LOSS = 1.8  # energy drained per second just by being powered on
 HIT_ENERGY_LOSS = 0.9  # energy lost per tile/s of impact driven into a wall
 GEM_ENERGY_GAIN = 0.6  # energy recovered per gem = its value times this factor
 
+# Wall-bounce knobs. On a hit the into-wall speed is reversed into a short-lived
+# "knockback" velocity (heading is left alone), so the vehicle rebounds off the
+# rock and the player steers/throttles their way back out.
+_BOUNCE = 0.85  # fraction of the into-wall speed reflected back as knockback
+_HIT_SLOW = 0.85  # forward speed kept after a hit (times the glancing fraction)
+_KNOCK_KEEP = 0.88  # knockback velocity retained per tick (~0.35 s to fade out)
+
 
 def _today() -> str:
     """Today's local date as an ISO string, used as the default seed."""
@@ -52,7 +59,10 @@ class Session:
         self.px = 0.0
         self.py = 0.0
         self.heading = 0.0  # radians; 0 points up (-y). Forward = (sin, -cos).
-        self.speed = 0.0  # tiles/second, never negative
+        self.speed = 0.0  # tiles/second along the heading, never negative
+        self.kx = 0.0  # knockback velocity (tiles/s), decoupled from heading
+        self.ky = 0.0
+        self.bump = 0.0  # into-wall impact this tick (drives the client's red flash)
         self.up = self.down = self.left = self.right = False
         self.cols = 41
         self.rows = 41
@@ -67,6 +77,7 @@ class Session:
     def _spawn(self) -> None:
         """Place the player on the nearest floor tile to the origin, at rest."""
         self.speed = 0.0
+        self.kx = self.ky = self.bump = 0.0
         self.heading = 0.0
         for radius in range(64):
             for dy in range(-radius, radius + 1):
@@ -138,28 +149,51 @@ class Session:
 
         self.energy -= DRAIN_ENERGY_LOSS * dt  # steady power drain
 
-        impact = 0.0  # speed driven into a wall this step (0 = clean move)
-        if self.speed > 0.0:
-            vx = math.sin(self.heading) * self.speed * dt
-            vy = -math.cos(self.heading) * self.speed * dt
-            floor = self.world.is_floor
-            if floor(round(self.px + vx), round(self.py + vy)):
-                self.px, self.py = self.px + vx, self.py + vy
-            elif floor(round(self.px + vx), round(self.py)):
-                impact = self.speed * abs(math.cos(self.heading))  # y blocked
-                self.px += vx  # slide along a rock horizontally
-                self.speed *= 0.7
-            elif floor(round(self.px), round(self.py + vy)):
-                impact = self.speed * abs(math.sin(self.heading))  # x blocked
-                self.py += vy  # slide along a rock vertically
-                self.speed *= 0.7
-            else:
-                impact = self.speed  # ran head-on into a rock
-                self.speed = 0.0
+        # Fade any lingering knockback from an earlier bounce, then apply it.
+        self.kx *= _KNOCK_KEEP
+        self.ky *= _KNOCK_KEEP
+        if abs(self.kx) < 1e-3:
+            self.kx = 0.0
+        if abs(self.ky) < 1e-3:
+            self.ky = 0.0
 
-        if impact > 0.0:
-            self.energy -= HIT_ENERGY_LOSS * impact  # harder = costlier
-            self._dirty = True
+        # Combined velocity: steady drive along the heading + knockback drift.
+        fx, fy = math.sin(self.heading), -math.cos(self.heading)
+        vx = fx * self.speed + self.kx
+        vy = fy * self.speed + self.ky
+        mag = math.hypot(vx, vy)
+        if mag > _MAX_SPEED:  # cap the step so we can't skip over a thin wall
+            vx *= _MAX_SPEED / mag
+            vy *= _MAX_SPEED / mag
+
+        self.bump = 0.0
+        dx, dy = vx * dt, vy * dt
+        if dx or dy:
+            floor = self.world.is_floor
+            if floor(round(self.px + dx), round(self.py + dy)):
+                self.px += dx
+                self.py += dy
+            else:
+                bx = not floor(round(self.px + dx), round(self.py))  # blocked in x
+                by = not floor(round(self.px), round(self.py + dy))  # blocked in y
+                if not bx and not by:  # clipped a diagonal corner
+                    bx = by = True
+                if not bx:  # slide along whichever axis is still open
+                    self.px += dx
+                if not by:
+                    self.py += dy
+                # Kill the into-wall part of the drive, keep the glancing part.
+                total = math.hypot(vx, vy) or 1e-9
+                self.bump = math.hypot(vx if bx else 0.0, vy if by else 0.0)
+                tang = 0.0 if (bx and by) else (abs(vy) if bx else abs(vx))
+                self.speed *= _HIT_SLOW * (tang / total)
+                # Reflect the blocked velocity back out as knockback (next tick).
+                if bx:
+                    self.kx = -vx * _BOUNCE
+                if by:
+                    self.ky = -vy * _BOUNCE
+                self.energy -= HIT_ENERGY_LOSS * self.bump  # harder = costlier
+                self._dirty = True
 
         self._collect()  # pick up a gem on the current tile (even while parked)
 
@@ -227,6 +261,7 @@ class Session:
             "score": self.score,
             "energy": self.energy,
             "dead": self.dead,
+            "bump": self.bump,
             "player": {
                 "x": self.px,
                 "y": self.py,
