@@ -26,17 +26,34 @@ world's hue drifts very slowly the further you travel from the centre.
 Scattered around are glowing **gems** — crystalline rock embedded in the wall
 faces (they only form on floor tiles that touch a rock). They're common near the
 origin and grow rarer with distance, and each is worth 10–40 points (the more it's
-worth, the brighter it glows). Drive over one to mine it: it's added to your score
-and leaves behind a little rubble of gem- and rock-coloured pebbles. Mined gems
-stay mined for the rest of the run, even after their chunk scrolls away and back.
+worth, the brighter it glows). Drive over one to mine it: it's added to your score,
+tops up your energy, and leaves behind a little rubble of gem- and rock-coloured
+pebbles. Mined gems stay mined for the rest of the run, even after their chunk
+scrolls away and back.
 
-In the header you can also:
+Keeping the lights on costs **energy** (the battery gauge, bottom-right, runs a
+green → yellow → red gradient from full to empty). It drains slowly all the time,
+takes a bigger hit when you drive into a rock (the harder and more head-on the
+impact, the more it costs), and is replenished by mining gems (each gem restores its
+value times a factor, so richer gems recharge you more). When it reaches zero the
+run ends on a **game-over** screen showing your final score, where you can play
+again or return to the menu. The drain-rate, hit-cost and gem-gain factor are all
+tunable knobs (`DRAIN_ENERGY_LOSS`, `HIT_ENERGY_LOSS`, `GEM_ENERGY_GAIN` in
+`app/server.py`).
 
-- pick a different **seed date** — every date is its own world (different layout
-  *and* colour scheme);
-- choose a **layout** — *Dungeon* (default: dense, organic caverns), *Aisles*
-  (a maze of 1-wide corridors — regular grid), or *Caves* (sparse, open floor);
-- click **Regenerate** to apply.
+The rest of the dashboard is drawn on the canvas: a **compass** up top, your
+**score** and **distance** top-right, and an analog **speedometer** bottom-left.
+Tap the **☰** button (top-left) to pause, which opens an overlay to resume,
+restart the run from the origin, return to the main menu, or read How to Play.
+
+Everything starts at the **main menu**, where you:
+
+- pick a **day** with the ◄ / ► steppers — every date is its own world (different
+  layout *and* colour scheme);
+- choose a **mode** — *Dungeon* (default: dense, organic caverns), *Caves*
+  (sparse, open floor), or *Aisles* (a maze of 1-wide corridors — regular grid);
+- see your **high score** for the selected day + mode (kept in your browser);
+- press **Play**, or open **How to Play** for the full rundown.
 
 Prefer plain Docker?
 

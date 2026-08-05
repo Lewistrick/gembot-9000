@@ -268,3 +268,8 @@ canvas {
     text-shadow: 0 0 12px rgba(79, 242, 200, 0.7);
 }
 
+.ptitle.amber {
+    color: var(--amber);
+    text-shadow: 0 0 12px rgba(255, 207, 77, 0.7);
+}
+

@@ -13,11 +13,15 @@ let camFrom = { x: 0, y: 0, h: 0 }, camTo = { x: 0, y: 0, h: 0 };
 let segStart = 0, segDur = 50, haveCam = false;
 let playing = false;           // false while a menu/overlay is showing
 let pending = null;            // {seed, style} to apply once the socket is open
+let gameOver = false;          // true once the game-over screen is showing
 const hudHit = {};             // clickable HUD rects (CSS px), set each frame
 
 function send(msg) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
+
+// Tell the server whether the run is live, so energy only drains while playing.
+function sendActive(on) { send({ action: "active", on }); }
 
 function viewportTiles() {
     const rect = stage.getBoundingClientRect();
@@ -267,21 +271,53 @@ function drawSpeedo(cx, cy, r) {
     text("SPD", cx, cy + r * 0.74, Math.max(8, r * 0.15), HUD.dim, "center", 0);
 }
 
-function drawBattery(x, y, w, h) {
+// Energy colour ramp: red (empty) -> amber (half) -> green (full).
+const E_RED = [255, 90, 77], E_YEL = [255, 207, 77], E_GRN = [62, 240, 122];
+function energyColor(f) {
+    return f >= 0.5 ? mix(E_YEL, E_GRN, (f - 0.5) * 2) : mix(E_RED, E_YEL, f * 2);
+}
+
+function drawBattery(x, y, w, h, frac) {
+    frac = Math.max(0, Math.min(1, frac));
     const nub = w * 0.06, bw = w - nub;
+    const tip = energyColor(frac);
     rr(x, y, bw, h, Math.min(6, h * 0.2));
     ctx.fillStyle = "rgba(4,12,12,0.62)"; ctx.fill();
     ctx.lineWidth = Math.max(1.5, h * 0.08); ctx.strokeStyle = HUD.neon;
     ctx.shadowColor = HUD.neon; ctx.shadowBlur = 6; ctx.stroke(); ctx.shadowBlur = 0;
-    ctx.fillStyle = HUD.neon; ctx.fillRect(x + bw, y + h * 0.3, nub, h * 0.4);
-    // Segments — 100% for now, so all filled.
-    const pad = h * 0.18, gap = bw * 0.03, segs = 4;
+    ctx.fillStyle = css(tip); ctx.fillRect(x + bw, y + h * 0.3, nub, h * 0.4);
+
+    const pad = h * 0.18;
     const inX = x + pad, inY = y + pad, inW = bw - 2 * pad, inH = h - 2 * pad;
-    const sw = (inW - gap * (segs - 1)) / segs;
-    ctx.fillStyle = HUD.neon; ctx.shadowColor = HUD.neon; ctx.shadowBlur = 6;
-    for (let i = 0; i < segs; i++) ctx.fillRect(inX + i * (sw + gap), inY, sw, inH);
-    ctx.shadowBlur = 0;
-    text("100%", x + bw / 2, y + h * 0.66, Math.max(9, h * 0.36), HUD.ink, "center", 0);
+    const fillW = inW * frac;
+    if (fillW > 0.5) {
+        ctx.save();
+        rr(inX, inY, inW, inH, Math.min(4, h * 0.12)); ctx.clip();
+        const g = ctx.createLinearGradient(inX, 0, inX + inW, 0);
+        g.addColorStop(0, css(E_RED));
+        g.addColorStop(0.5, css(E_YEL));
+        g.addColorStop(1, css(E_GRN));
+        ctx.fillStyle = g;
+        ctx.shadowColor = css(tip); ctx.shadowBlur = 8;
+        ctx.fillRect(inX, inY, fillW, inH);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+    }
+    // Retro segment dividers punched through the fill.
+    ctx.strokeStyle = "rgba(4,12,12,0.85)"; ctx.lineWidth = Math.max(1, w * 0.012);
+    for (let i = 1; i < 10; i++) {
+        const sx = inX + inW * (i / 10);
+        ctx.beginPath(); ctx.moveTo(sx, inY); ctx.lineTo(sx, inY + inH); ctx.stroke();
+    }
+    // Percentage, outlined so it reads over any fill level.
+    const pct = Math.round(frac * 100) + "%";
+    const fs = Math.max(9, h * 0.36);
+    ctx.font = `bold ${fs}px ${HUD.font}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(2, fs * 0.2); ctx.strokeStyle = "rgba(0,0,0,0.7)";
+    ctx.strokeText(pct, x + bw / 2, y + h * 0.52);
+    ctx.fillStyle = "#eafff8"; ctx.fillText(pct, x + bw / 2, y + h * 0.52);
+    ctx.textBaseline = "alphabetic";
 }
 
 function drawHUD(cam, W, H) {
@@ -297,7 +333,8 @@ function drawHUD(cam, W, H) {
     const spR = Math.max(40, Math.min(94, S * 0.12));
     drawSpeedo(M + spR, H - M - spR, spR);
     const batW = Math.max(64, Math.min(140, S * 0.18)), batH = batW * 0.46;
-    drawBattery(W - M - batW, H - M - batH, batW, batH);
+    const energy = snap.energy == null ? 100 : snap.energy;
+    drawBattery(W - M - batW, H - M - batH, batW, batH, energy / 100);
 }
 
 function draw() {
@@ -359,6 +396,8 @@ function onSnapshot(s) {
     haveCam = true;
     snap = s;
     if (s.seed && typeof s.score === "number") bumpHi(s.seed, s.style, s.score);
+    if (s.dead && !gameOver) showGameOver();
+    else if (!s.dead) gameOver = false;
 }
 
 // Held-key controls: Up throttle, Down brake, Left/Right steer.
@@ -417,6 +456,7 @@ function connect() {
     ws.onopen = () => {
         reportViewport();
         if (pending) { send({ action: "seed", seed: pending.seed, style: pending.style }); pending = null; }
+        else sendActive(playing);   // resync run state after a reconnect
     };
     ws.onmessage = (ev) => onSnapshot(JSON.parse(ev.data));
     ws.onclose = () => setTimeout(connect, 1000);
@@ -494,18 +534,23 @@ function openHowto(fromEl) {
     howtoEl.classList.remove("hidden");
 }
 
-function openPause() {
-    // Drop any held keys so the vehicle isn't left driving while paused.
+function releaseKeys() {
     let changed = false;
     for (const k in held) if (held[k]) { held[k] = false; changed = true; }
     if (changed) sendControls();
+}
+
+function openPause() {
+    releaseKeys();          // don't leave the vehicle driving while paused
     playing = false;
+    sendActive(false);      // freeze physics + energy drain server-side
     pauseEl.classList.remove("hidden");
 }
 
 function resume() {
     pauseEl.classList.add("hidden");
     playing = true;
+    sendActive(true);
 }
 
 document.getElementById("resumeBtn").addEventListener("click", resume);
@@ -521,6 +566,30 @@ document.getElementById("restartBtn").addEventListener("click", () => {
 document.getElementById("pauseHowBtn").addEventListener("click", () => {
     pauseEl.classList.add("hidden");
     openHowto(pauseEl);
+});
+
+// ---- Game over ----
+const gameoverEl = document.getElementById("gameover");
+const finalScoreEl = document.getElementById("finalScore");
+
+function showGameOver() {
+    gameOver = true;
+    playing = false;
+    releaseKeys();
+    pauseEl.classList.add("hidden");     // in case it was open
+    finalScoreEl.textContent = snap ? snap.score : 0;
+    gameoverEl.classList.remove("hidden");
+}
+
+document.getElementById("againBtn").addEventListener("click", () => {
+    if (snap && snap.seed) send({ action: "seed", seed: snap.seed, style: snap.style });
+    gameoverEl.classList.add("hidden");
+    playing = true;                      // seed action restarts the run server-side
+});
+document.getElementById("goHomeBtn").addEventListener("click", () => {
+    gameoverEl.classList.add("hidden");
+    menuEl.classList.remove("hidden");
+    updateMenu();
 });
 
 updateMenu();

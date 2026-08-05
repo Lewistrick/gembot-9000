@@ -28,6 +28,11 @@ _DRAG = 0.5  # fraction of speed lost per second when coasting
 _STEER = 2.8  # radians/second while steering at speed (Left/Right)
 _STEER_MIN = 0.35  # fraction of the steering rate available at a standstill
 
+# Energy / scoring knobs (energy runs 0..100; tweak freely to tune the game).
+DRAIN_ENERGY_LOSS = 1.8  # energy drained per second just by being powered on
+HIT_ENERGY_LOSS = 0.9  # energy lost per tile/s of impact driven into a wall
+GEM_ENERGY_GAIN = 0.6  # energy recovered per gem = its value times this factor
+
 
 def _today() -> str:
     """Today's local date as an ISO string, used as the default seed."""
@@ -52,7 +57,10 @@ class Session:
         self.cols = 41
         self.rows = 41
         self.score = 0
+        self.energy = 100.0  # 0..100; hitting 0 ends the run
         self.collected: set[tuple[int, int]] = set()  # gems already picked up
+        self.running = False  # True only while the client is actively playing
+        self.dead = False  # True once energy has run out
         self._dirty = True
         self._spawn()
 
@@ -81,9 +89,20 @@ class Session:
         self.world = World(seed, self.style)
         self.up = self.down = self.left = self.right = False
         self.score = 0  # a new world is a fresh run
+        self.energy = 100.0
+        self.dead = False
+        self.running = True  # pressing Play/Restart starts the run
         self.collected.clear()
         self._bound_cache()
         self._spawn()
+        self._dirty = True
+
+    def set_running(self, on: bool) -> None:
+        """Pause/resume the run (menu, pause overlay). Stops drain when off."""
+        if not self.dead:
+            self.running = on
+        if not on:  # freeze the vehicle while paused
+            self.up = self.down = self.left = self.right = False
         self._dirty = True
 
     def resize(self, cols: int, rows: int) -> None:
@@ -93,11 +112,14 @@ class Session:
         self._dirty = True
 
     def active(self) -> bool:
-        """Whether anything is changing and the client needs fresh frames."""
-        return self.speed > 1e-3 or self.up or self.down or self.left or self.right
+        """Whether the client needs a steady frame stream (energy always drifts
+        while a run is live, so we stream continuously until paused or dead)."""
+        return self.running and not self.dead
 
     def tick(self) -> None:
         """Advance the vehicle one physics step: steer, throttle/brake, move."""
+        if not self.running or self.dead:
+            return
         dt = _TICK
         # Turn rate scales with speed (subtle at a crawl, fuller at speed).
         turn = _STEER * (_STEER_MIN + (1.0 - _STEER_MIN) * self.speed / _MAX_SPEED)
@@ -114,6 +136,9 @@ class Session:
         if self.speed < 0.05 and not self.up:
             self.speed = 0.0
 
+        self.energy -= DRAIN_ENERGY_LOSS * dt  # steady power drain
+
+        impact = 0.0  # speed driven into a wall this step (0 = clean move)
         if self.speed > 0.0:
             vx = math.sin(self.heading) * self.speed * dt
             vy = -math.cos(self.heading) * self.speed * dt
@@ -121,16 +146,32 @@ class Session:
             if floor(round(self.px + vx), round(self.py + vy)):
                 self.px, self.py = self.px + vx, self.py + vy
             elif floor(round(self.px + vx), round(self.py)):
+                impact = self.speed * abs(math.cos(self.heading))  # y blocked
                 self.px += vx  # slide along a rock horizontally
                 self.speed *= 0.7
             elif floor(round(self.px), round(self.py + vy)):
+                impact = self.speed * abs(math.sin(self.heading))  # x blocked
                 self.py += vy  # slide along a rock vertically
                 self.speed *= 0.7
             else:
-                self.speed = 0.0  # ran head-on into a rock
-                self._dirty = True
+                impact = self.speed  # ran head-on into a rock
+                self.speed = 0.0
+
+        if impact > 0.0:
+            self.energy -= HIT_ENERGY_LOSS * impact  # harder = costlier
+            self._dirty = True
 
         self._collect()  # pick up a gem on the current tile (even while parked)
+
+        if self.energy >= 100.0:
+            self.energy = 100.0
+        elif self.energy <= 0.0:  # out of power: end the run
+            self.energy = 0.0
+            self.dead = True
+            self.running = False
+            self.speed = 0.0
+            self.up = self.down = self.left = self.right = False
+            self._dirty = True
 
     def _collect(self) -> None:
         """Collect an uncollected gem under the player, once, adding its value."""
@@ -141,6 +182,7 @@ class Session:
         if value is not None:
             self.collected.add(cell)
             self.score += value
+            self.energy = min(100.0, self.energy + value * GEM_ENERGY_GAIN)
             self._dirty = True
 
     def take_dirty(self) -> bool:
@@ -183,6 +225,8 @@ class Session:
             "gems": gems,
             "rubble": rubble,
             "score": self.score,
+            "energy": self.energy,
+            "dead": self.dead,
             "player": {
                 "x": self.px,
                 "y": self.py,
@@ -228,6 +272,8 @@ async def _reader(sock: WebSocket, session: Session) -> None:
             session.resize(
                 int(msg.get("cols", session.cols)), int(msg.get("rows", session.rows))
             )
+        elif action == "active":
+            session.set_running(bool(msg.get("on")))
 
 
 # Sessions are keyed by a client token so a dropped/reconnected socket (e.g. a
