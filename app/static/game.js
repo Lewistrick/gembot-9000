@@ -11,8 +11,9 @@ let snap = null;               // latest server snapshot
 // Camera interpolation (world-tile coords + heading in radians).
 let camFrom = { x: 0, y: 0, h: 0 }, camTo = { x: 0, y: 0, h: 0 };
 let segStart = 0, segDur = 50, haveCam = false;
-let playing = false;           // false while the main menu is showing
+let playing = false;           // false while a menu/overlay is showing
 let pending = null;            // {seed, style} to apply once the socket is open
+const hudHit = {};             // clickable HUD rects (CSS px), set each frame
 
 function send(msg) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -288,6 +289,7 @@ function drawHUD(cam, W, H) {
     const M = Math.max(8, S * 0.028);
     const topH = Math.max(30, Math.min(58, S * 0.085));
     drawHamburger(M, M, topH);
+    hudHit.hamburger = { x: M, y: M, w: topH, h: topH };
     const scoreW = Math.max(96, Math.min(W * 0.34, S * 0.34));
     drawScorePanel(W - M - scoreW, M, scoreW, topH);
     const cLeft = M + topH + M, cRight = W - M - scoreW - M;
@@ -391,6 +393,16 @@ window.addEventListener("blur", () => {
 });
 window.addEventListener("resize", reportViewport);
 
+// Tap the on-canvas hamburger (top-left) to open the pause overlay.
+canvas.addEventListener("click", (e) => {
+    if (!playing) return;
+    const hb = hudHit.hamburger;
+    if (!hb) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    if (x >= hb.x && x <= hb.x + hb.w && y >= hb.y && y <= hb.y + hb.h) openPause();
+});
+
 // Stable per-browser token so a reconnect resumes the same run (position,
 // score, mined gems) instead of starting over.
 let token = localStorage.getItem("gembot-token");
@@ -466,11 +478,49 @@ document.getElementById("playBtn").addEventListener("click", () => {
 });
 document.getElementById("howBtn").addEventListener("click", () => {
     menuEl.classList.add("hidden");
-    howtoEl.classList.remove("hidden");
+    openHowto(menuEl);
 });
 document.getElementById("backBtn").addEventListener("click", () => {
     howtoEl.classList.add("hidden");
+    (howReturnEl || menuEl).classList.remove("hidden");
+});
+
+// ---- In-game pause overlay (opened from the HUD hamburger) ----
+const pauseEl = document.getElementById("pause");
+let howReturnEl = menuEl;       // screen to restore when How-to's Back is pressed
+
+function openHowto(fromEl) {
+    howReturnEl = fromEl;
+    howtoEl.classList.remove("hidden");
+}
+
+function openPause() {
+    // Drop any held keys so the vehicle isn't left driving while paused.
+    let changed = false;
+    for (const k in held) if (held[k]) { held[k] = false; changed = true; }
+    if (changed) sendControls();
+    playing = false;
+    pauseEl.classList.remove("hidden");
+}
+
+function resume() {
+    pauseEl.classList.add("hidden");
+    playing = true;
+}
+
+document.getElementById("resumeBtn").addEventListener("click", resume);
+document.getElementById("homeBtn").addEventListener("click", () => {
+    pauseEl.classList.add("hidden");
     menuEl.classList.remove("hidden");
+    updateMenu();               // refresh the high score for the current run
+});
+document.getElementById("restartBtn").addEventListener("click", () => {
+    if (snap && snap.seed) send({ action: "seed", seed: snap.seed, style: snap.style });
+    resume();                   // back to the origin, same day + mode
+});
+document.getElementById("pauseHowBtn").addEventListener("click", () => {
+    pauseEl.classList.add("hidden");
+    openHowto(pauseEl);
 });
 
 updateMenu();

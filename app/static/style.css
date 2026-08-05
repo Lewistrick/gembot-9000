@@ -197,6 +197,11 @@ canvas {
     font-size: clamp(16px, 4.4vw, 20px);
 }
 
+/* Buttons inside a panel fill it rather than the full screen width. */
+.panel .btn {
+    width: 100%;
+}
+
 .btn.big {
     color: var(--ink);
     background: var(--neon);
@@ -251,3 +256,15 @@ canvas {
 .howscroll b {
     color: var(--neon);
 }
+
+/* ---- In-game pause overlay ---- */
+.ptitle {
+    margin: 0;
+    font-weight: 800;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    font-size: clamp(26px, 8vw, 46px);
+    color: var(--neon);
+    text-shadow: 0 0 12px rgba(79, 242, 200, 0.7);
+}
+
