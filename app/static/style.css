@@ -1,90 +1,33 @@
-    :root {
-        color-scheme: dark;
-    }
+:root {
+    color-scheme: dark;
+}
 
-    * {
-        box-sizing: border-box;
-    }
+* {
+    box-sizing: border-box;
+}
 
-    html,
-    body {
-        margin: 0;
-        height: 100%;
-        overflow: hidden;
-        font-family: system-ui, sans-serif;
-    }
+html,
+body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #05080a;
+    /* Retro terminal feel; the HUD itself is drawn on the canvas. */
+    font-family: "Courier New", ui-monospace, monospace;
+    /* Prevent touch scrolling / callouts on mobile so the map stays put. */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior: none;
+}
 
-    body {
-        background: #111;
-        color: #eee;
-        display: flex;
-        flex-direction: column;
-    }
+#stage {
+    position: fixed;
+    inset: 0;
+}
 
-    header {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        flex-wrap: wrap;
-        padding: 10px 16px;
-        background: #1b1b1b;
-        border-bottom: 1px solid #333;
-    }
-
-    header h1 {
-        font-size: 16px;
-        margin: 0;
-        font-weight: 600;
-        letter-spacing: .3px;
-    }
-
-    header .hint {
-        color: #888;
-        font-size: 12px;
-    }
-
-    label {
-        font-size: 13px;
-        color: #bbb;
-    }
-
-    input[type="date"],
-    select {
-        background: #262626;
-        color: #eee;
-        border: 1px solid #444;
-        border-radius: 6px;
-        padding: 5px 8px;
-        font: inherit;
-    }
-
-    button {
-        background: #e53935;
-        color: #fff;
-        border: 0;
-        border-radius: 6px;
-        padding: 6px 12px;
-        font: inherit;
-        cursor: pointer;
-    }
-
-    button:hover {
-        background: #f2554f;
-    }
-
-    #status {
-        margin-left: auto;
-        font-size: 12px;
-        color: #888;
-    }
-
-    #stage {
-        flex: 1;
-        position: relative;
-    }
-
-    canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-    }
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}

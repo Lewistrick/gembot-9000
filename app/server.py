@@ -189,6 +189,7 @@ class Session:
                 "heading": self.heading,
                 "speed": self.speed,
             },
+            "max_speed": _MAX_SPEED,
             "moving": self.speed > 1e-3,
             "tick_ms": int(_TICK * 1000),
             "colors": self.world.palette(math.hypot(self.px, self.py)),

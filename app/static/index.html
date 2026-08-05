@@ -1,21 +1,8 @@
 <meta charset="utf-8" />
 <title>GemBot 9000</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <link rel="stylesheet" href="/static/style.css" />
 
-<header>
-    <h1>GemBot 9000</h1>
-    <span class="hint">↑ accelerate · ↓ brake · ← / → steer · the map turns with you · PageUp/PageDown zoom</span>
-    <label>Seed date <input type="date" id="seed" /></label>
-    <label>Layout
-        <select id="style">
-            <option value="dungeon">Dungeon (dense, organic)</option>
-            <option value="aisles">Aisles (maze grid)</option>
-            <option value="cave">Caves (sparse)</option>
-        </select>
-    </label>
-    <button id="apply">Regenerate</button>
-    <span id="status">connecting…</span>
-</header>
 <div id="stage"><canvas id="c"></canvas></div>
 
 <script src="/static/game.js"></script>
