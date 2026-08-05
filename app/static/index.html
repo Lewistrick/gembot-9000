@@ -5,4 +5,74 @@
 
 <div id="stage"><canvas id="c"></canvas></div>
 
+<main id="menu" class="screen">
+    <h1 class="logo">GEM<em>BOT</em> 9000</h1>
+    <p class="tag">// deep-core mining unit //</p>
+
+    <section class="panel">
+        <div class="field">
+            <span class="lbl">Day</span>
+            <div class="stepper">
+                <button class="arrow" id="datePrev" aria-label="Previous day">&#9664;</button>
+                <span class="val" id="dateVal">----</span>
+                <button class="arrow" id="dateNext" aria-label="Next day">&#9654;</button>
+            </div>
+        </div>
+
+        <div class="field">
+            <span class="lbl">Mode</span>
+            <div class="modes" id="modes">
+                <button class="mode" data-mode="dungeon">Dungeon</button>
+                <button class="mode" data-mode="cave">Caves</button>
+                <button class="mode" data-mode="aisles">Aisles</button>
+            </div>
+        </div>
+
+        <div class="field hi">
+            <span class="lbl">High Score</span>
+            <span class="val amber" id="hiScore">0</span>
+        </div>
+    </section>
+
+    <button id="playBtn" class="btn big">&#9654; Play</button>
+    <button id="howBtn" class="btn ghost">How to Play</button>
+</main>
+
+<section id="howto" class="screen hidden">
+    <div class="howscroll">
+        <h2>How to Play</h2>
+        <p class="lead">You are <b>GemBot 9000</b>, a stubby little mining robot lowered
+            into an endless underground mine. Buried in the dark rock are glittering
+            <b>gems</b> — and digging them out is your whole reason for being. The
+            further you rove from the entrance, the rarer and richer the seams become,
+            and the rock itself slowly shifts colour the deeper you go.</p>
+
+        <h3>Driving</h3>
+        <p>Steer with the arrow keys: <b>&uarr;</b> accelerate, <b>&darr;</b> brake,
+            <b>&larr; / &rarr;</b> turn. The whole mine rotates around you, so you are
+            always driving toward the top of the screen. Ease off the throttle and you
+            coast to a stop; steering bites harder the faster you go.</p>
+
+        <h3>Rock</h3>
+        <p>Solid rock blocks your way. Clip it at an angle and you scrape along it; hit
+            it head-on and you stop dead. There's always another way around.</p>
+
+        <h3>Mining gems</h3>
+        <p>Gems grow as crystals embedded in the rock faces. Simply drive over one to
+            mine it — its value (<b>10&ndash;40</b>) is added to your score and it
+            crumbles into a little rubble. Once mined, it's gone for the rest of the run.</p>
+
+        <h3>Your dashboard</h3>
+        <p>The <b>compass</b> up top shows your heading, with your <b>score</b> and
+            <b>distance</b> from the entrance to the right. The <b>speedometer</b> and
+            <b>battery</b> sit along the bottom. Use <b>PageUp / PageDown</b> to zoom.</p>
+
+        <h3>Goal</h3>
+        <p>Mine as many gems as you can and beat your <b>high score</b>. Every day and
+            every mode is a completely different mine, so there's always a new one to
+            crack.</p>
+    </div>
+    <button id="backBtn" class="btn big">&#9664; Back</button>
+</section>
+
 <script src="/static/game.js"></script>

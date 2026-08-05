@@ -1,5 +1,9 @@
 :root {
     color-scheme: dark;
+    --neon: #4ff2c8;
+    --amber: #ffcf4d;
+    --ink: #03110c;
+    --bg: #05080a;
 }
 
 * {
@@ -11,14 +15,15 @@ body {
     margin: 0;
     height: 100%;
     overflow: hidden;
-    background: #05080a;
-    /* Retro terminal feel; the HUD itself is drawn on the canvas. */
+    background: var(--bg);
+    /* Retro terminal feel; the in-game HUD is drawn on the canvas. */
     font-family: "Courier New", ui-monospace, monospace;
     /* Prevent touch scrolling / callouts on mobile so the map stays put. */
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;
     overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 #stage {
@@ -30,4 +35,219 @@ canvas {
     display: block;
     width: 100%;
     height: 100%;
+}
+
+/* ---- Retro menu / how-to screens (overlays above the canvas) ---- */
+.screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(14px, 3vh, 26px);
+    padding: clamp(16px, 5vw, 40px);
+    color: #cfeee6;
+    text-align: center;
+    overflow: auto;
+    background:
+        radial-gradient(130% 90% at 50% -10%, rgba(79, 242, 200, 0.10), transparent 60%),
+        var(--bg);
+}
+
+/* subtle CRT scanlines */
+.screen::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, 0.22) 2px 4px);
+}
+
+.hidden {
+    display: none !important;
+}
+
+.logo {
+    margin: 0;
+    font-weight: 800;
+    letter-spacing: 2px;
+    font-size: clamp(34px, 11vw, 74px);
+    line-height: 1;
+    color: var(--neon);
+    text-shadow: 0 0 12px rgba(79, 242, 200, 0.7), 0 0 30px rgba(79, 242, 200, 0.35);
+}
+
+.logo em {
+    font-style: normal;
+    color: var(--amber);
+    text-shadow: 0 0 12px rgba(255, 207, 77, 0.7);
+}
+
+.tag {
+    margin: -6px 0 0;
+    color: #6f8f88;
+    letter-spacing: 3px;
+    font-size: clamp(10px, 2.6vw, 13px);
+    text-transform: uppercase;
+}
+
+.panel {
+    width: min(92vw, 440px);
+    border: 2px solid var(--neon);
+    border-radius: 12px;
+    background: rgba(4, 14, 13, 0.6);
+    box-shadow: 0 0 18px rgba(79, 242, 200, 0.25), inset 0 0 22px rgba(79, 242, 200, 0.06);
+    padding: clamp(14px, 4vw, 22px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(12px, 3vw, 18px);
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.lbl {
+    color: #6f8f88;
+    letter-spacing: 2px;
+    font-size: clamp(10px, 2.6vw, 13px);
+    text-transform: uppercase;
+}
+
+.stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.val {
+    color: var(--neon);
+    font-size: clamp(17px, 5vw, 24px);
+    letter-spacing: 1px;
+    min-width: 10ch;
+}
+
+.val.amber {
+    color: var(--amber);
+}
+
+.hi .val {
+    font-size: clamp(26px, 8vw, 40px);
+    min-width: 0;
+    text-shadow: 0 0 12px rgba(255, 207, 77, 0.5);
+}
+
+.arrow,
+.mode,
+.btn {
+    font-family: inherit;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--neon);
+    background: rgba(79, 242, 200, 0.06);
+    border: 2px solid var(--neon);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background .1s, color .1s, box-shadow .1s;
+}
+
+.arrow {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+    display: grid;
+    place-items: center;
+    flex: none;
+}
+
+.arrow:active {
+    background: var(--neon);
+    color: var(--ink);
+}
+
+.modes {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.mode {
+    flex: 1;
+    padding: 12px 4px;
+    font-size: clamp(12px, 3.2vw, 15px);
+}
+
+.mode.active {
+    background: var(--neon);
+    color: var(--ink);
+    box-shadow: 0 0 14px rgba(79, 242, 200, 0.5);
+}
+
+.btn {
+    width: min(92vw, 440px);
+    padding: 16px;
+    font-size: clamp(16px, 4.4vw, 20px);
+}
+
+.btn.big {
+    color: var(--ink);
+    background: var(--neon);
+    box-shadow: 0 0 18px rgba(79, 242, 200, 0.5);
+}
+
+.btn.big:active {
+    box-shadow: 0 0 26px rgba(79, 242, 200, 0.85);
+}
+
+.btn.ghost {
+    background: transparent;
+}
+
+.btn.ghost:active {
+    background: rgba(79, 242, 200, 0.12);
+}
+
+.howscroll {
+    width: min(94vw, 580px);
+    max-height: 72vh;
+    overflow-y: auto;
+    text-align: left;
+    border: 2px solid var(--neon);
+    border-radius: 12px;
+    background: rgba(4, 14, 13, 0.6);
+    box-shadow: 0 0 18px rgba(79, 242, 200, 0.2);
+    padding: clamp(16px, 4vw, 24px);
+    line-height: 1.55;
+    color: #bfe8de;
+    -webkit-overflow-scrolling: touch;
+}
+
+.howscroll h2 {
+    margin: 0 0 10px;
+    color: var(--neon);
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(79, 242, 200, 0.5);
+}
+
+.howscroll h3 {
+    margin: 18px 0 6px;
+    color: var(--amber);
+    letter-spacing: 1px;
+    font-size: 1.05em;
+}
+
+.howscroll p {
+    margin: 0 0 10px;
+}
+
+.howscroll b {
+    color: var(--neon);
 }

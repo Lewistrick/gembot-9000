@@ -11,6 +11,8 @@ let snap = null;               // latest server snapshot
 // Camera interpolation (world-tile coords + heading in radians).
 let camFrom = { x: 0, y: 0, h: 0 }, camTo = { x: 0, y: 0, h: 0 };
 let segStart = 0, segDur = 50, haveCam = false;
+let playing = false;           // false while the main menu is showing
+let pending = null;            // {seed, style} to apply once the socket is open
 
 function send(msg) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -354,6 +356,7 @@ function onSnapshot(s) {
     segDur = s.tick_ms || 50;
     haveCam = true;
     snap = s;
+    if (s.seed && typeof s.score === "number") bumpHi(s.seed, s.style, s.score);
 }
 
 // Held-key controls: Up throttle, Down brake, Left/Right steer.
@@ -364,6 +367,7 @@ const held = { up: false, down: false, left: false, right: false };
 function sendControls() { send({ action: "controls", ...held }); }
 
 window.addEventListener("keydown", (e) => {
+    if (!playing) return;      // menu is up; let the DOM handle keys
     const k = KEYS[e.key];
     if (k) {
         e.preventDefault();
@@ -376,6 +380,7 @@ window.addEventListener("keydown", (e) => {
     }
 });
 window.addEventListener("keyup", (e) => {
+    if (!playing) return;
     const k = KEYS[e.key];
     if (k) { e.preventDefault(); held[k] = false; sendControls(); }
 });
@@ -397,9 +402,75 @@ if (!token) {
 function connect() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
-    ws.onopen = () => reportViewport();
+    ws.onopen = () => {
+        reportViewport();
+        if (pending) { send({ action: "seed", seed: pending.seed, style: pending.style }); pending = null; }
+    };
     ws.onmessage = (ev) => onSnapshot(JSON.parse(ev.data));
     ws.onclose = () => setTimeout(connect, 1000);
 }
 connect();
 requestAnimationFrame(draw);
+
+// ---- Main menu (opening screen) ----
+const menuEl = document.getElementById("menu");
+const howtoEl = document.getElementById("howto");
+const dateValEl = document.getElementById("dateVal");
+const hiScoreEl = document.getElementById("hiScore");
+const modesEl = document.getElementById("modes");
+
+let menuDate = new Date();
+let menuMode = "dungeon";
+const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+function isoLocal(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+function displayDate(d) { return `${WEEKDAYS[d.getDay()]} ${isoLocal(d)}`; }
+
+// High score per (day, mode), kept in this browser.
+function hiKey(iso, mode) { return `gembot-hs:${iso}:${mode}`; }
+function getHi(iso, mode) { return parseInt(localStorage.getItem(hiKey(iso, mode)) || "0", 10) || 0; }
+function bumpHi(iso, mode, score) {
+    if (score > getHi(iso, mode)) localStorage.setItem(hiKey(iso, mode), String(score));
+}
+
+function updateMenu() {
+    dateValEl.textContent = displayDate(menuDate);
+    for (const b of modesEl.querySelectorAll(".mode")) {
+        b.classList.toggle("active", b.dataset.mode === menuMode);
+    }
+    hiScoreEl.textContent = getHi(isoLocal(menuDate), menuMode);
+}
+function shiftDate(delta) { menuDate.setDate(menuDate.getDate() + delta); updateMenu(); }
+
+document.getElementById("datePrev").addEventListener("click", () => shiftDate(-1));
+document.getElementById("dateNext").addEventListener("click", () => shiftDate(1));
+for (const b of modesEl.querySelectorAll(".mode")) {
+    b.addEventListener("click", () => { menuMode = b.dataset.mode; updateMenu(); });
+}
+
+document.getElementById("playBtn").addEventListener("click", () => {
+    const seed = isoLocal(menuDate);
+    pending = { seed, style: menuMode };
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        send({ action: "seed", seed, style: menuMode });
+        pending = null;
+    }
+    menuEl.classList.add("hidden");
+    playing = true;
+    reportViewport();
+});
+document.getElementById("howBtn").addEventListener("click", () => {
+    menuEl.classList.add("hidden");
+    howtoEl.classList.remove("hidden");
+});
+document.getElementById("backBtn").addEventListener("click", () => {
+    howtoEl.classList.add("hidden");
+    menuEl.classList.remove("hidden");
+});
+
+updateMenu();
