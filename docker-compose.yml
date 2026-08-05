@@ -1,0 +1,16 @@
+services:
+  gembot:
+    build: .
+    ports:
+      - "8004:8000"
+    # Runs the image's stable CMD (no auto-reload) so the server never restarts
+    # under you mid-game — a restart drops the WebSocket and would reset your run.
+    #
+    # For development with live code reload, uncomment the two blocks below.
+    # Note: on Windows/macOS bind mounts, the file watcher can fire spurious
+    # reloads, which will interrupt gameplay.
+    # volumes:
+    #   - ./app:/app/app:ro
+    # command: >
+    #   uv run uvicorn app.server:app
+    #   --host 0.0.0.0 --port 8000 --reload
