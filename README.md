@@ -12,13 +12,17 @@ terrain — thick irregular rock masses with winding floor chambers.
 docker compose up --build
 ```
 
-Then open <http://localhost:8004>. You drive a vehicle (the red arrow, always
-pointing up) and **the map rotates to your heading**:
+Then open <http://localhost:8004>. You drive a little **mining robot** (always
+facing up) and **the map rotates to your heading**:
 
 - **↑ accelerate**, **↓ brake**, **← / → steer** — steering is gentler at a crawl
   and firmer at speed. Release the throttle and you coast to a stop; glancing a
-  rock makes you scrape along it, a head-on hit stops you.
+  rock makes you scrape along it, and slamming one **bounces** you off.
 - **PageUp / PageDown** zoom the map in and out.
+
+The floor and rock each get their own seed-picked colour (floor always light, rock
+always dark), with a grainy sand texture on the floor and veined stone on the rock
+whose exposed corners are gently rounded.
 
 You always start in a clear **10-tile-radius spawn area** at the origin, and the
 world's hue drifts very slowly the further you travel from the centre.
@@ -33,14 +37,14 @@ scrolls away and back.
 
 Keeping the lights on costs **energy** (the battery gauge, bottom-right, runs a
 green → yellow → red gradient from full to empty). It drains slowly even when
-you're parked and faster the quicker you drive, takes a bigger hit when you slam
-into a rock (the harder and more head-on the impact, the more it costs — and you
-**bounce** off it), and is replenished by mining gems (each gem restores its value
-times a factor, so richer gems recharge you more). When it reaches zero the run
-ends on a **game-over** screen showing your final score, where you can play again
-or return to the menu. The idle drain, speed drain, hit-cost and gem-gain factor
-are all tunable knobs (`DRAIN_ENERGY_LOSS`, `DRAIN_SPEED_LOSS`, `HIT_ENERGY_LOSS`,
-`GEM_ENERGY_GAIN` in `app/server.py`).
+you're parked and faster while you're accelerating, takes a bigger hit when you
+slam into a rock (the harder and more head-on the impact, the more it costs — and
+you **bounce** off it), and is replenished by mining gems (each gem restores its
+value times a factor, so richer gems recharge you more). When it reaches zero the
+run ends on a **game-over** screen showing your final score, where you can play
+again or return to the menu. The idle drain, acceleration drain, hit-cost and
+gem-gain factor are all tunable knobs (`DRAIN_ENERGY_LOSS`, `DRAIN_ACCEL_LOSS`,
+`HIT_ENERGY_LOSS`, `GEM_ENERGY_GAIN` in `app/server.py`).
 
 The rest of the dashboard is drawn on the canvas: a **compass** up top, your
 **score** and **distance** top-right, and an analog **speedometer** bottom-left.

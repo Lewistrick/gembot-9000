@@ -337,6 +337,231 @@ function drawHUD(cam, W, H) {
     drawBattery(W - M - batW, H - M - batH, batW, batH, energy / 100);
 }
 
+// ---- Per-world tile textures (sandy floor, veined stone) ----
+const NVAR = 6;                 // texture variants per tile kind
+let atlas = null;               // { key, floor:[canvas], rock:[canvas] }
+
+function offCanvas(w, h) {
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    return cv;
+}
+function seededRng(seed) {
+    let s = seed >>> 0;
+    return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+
+function makeFloorTile(ps, hex, variant) {
+    const cv = offCanvas(ps, ps), c = cv.getContext("2d"), base = hexRgb(hex);
+    c.fillStyle = hex; c.fillRect(0, 0, ps, ps);
+    const rng = seededRng((variant * 2654435761) ^ 0x51ed3b7);
+    // Broad, soft mottling so neighbouring grains aren't uniform.
+    for (let i = 0; i < 4; i++) {
+        const x = rng() * ps, y = rng() * ps, r = ps * (0.25 + rng() * 0.4);
+        const d = rng() - 0.5;
+        const col = d > 0 ? mix(base, [255, 255, 255], d * 0.3) : mix(base, [0, 0, 0], -d * 0.3);
+        const g = c.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, css(col, 0.5)); g.addColorStop(1, css(col, 0));
+        c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+    }
+    // Fine sand grain.
+    const grains = Math.round(ps * ps * 0.09);
+    for (let i = 0; i < grains; i++) {
+        const x = rng() * ps, y = rng() * ps, r = ps * (0.006 + rng() * 0.018);
+        const d = rng() - 0.5;
+        const col = d > 0 ? mix(base, [255, 255, 255], 0.4) : mix(base, [0, 0, 0], 0.35);
+        c.fillStyle = css(col, 0.35 + rng() * 0.5);
+        c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+    }
+    return cv;
+}
+
+function makeRockTile(ps, hex, variant) {
+    const cv = offCanvas(ps, ps), c = cv.getContext("2d"), base = hexRgb(hex);
+    c.fillStyle = hex; c.fillRect(0, 0, ps, ps);
+    const rng = seededRng((variant * 40503) ^ 0x9e3779b9);
+    // Rocky blotches (lighter and darker patches).
+    const blobs = 5 + ((rng() * 5) | 0);
+    for (let i = 0; i < blobs; i++) {
+        const x = rng() * ps, y = rng() * ps, r = ps * (0.12 + rng() * 0.24);
+        const d = rng() - 0.45;
+        const col = d > 0 ? mix(base, [255, 255, 255], d * 0.3) : mix(base, [0, 0, 0], -d * 0.55);
+        const g = c.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, css(col, 0.6)); g.addColorStop(1, css(col, 0));
+        c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+    }
+    // Mineral veins.
+    const vein = mix(base, [255, 255, 255], 0.45);
+    const veins = 1 + ((rng() * 2) | 0);
+    for (let v = 0; v < veins; v++) {
+        c.strokeStyle = css(vein, 0.3 + rng() * 0.3);
+        c.lineWidth = Math.max(1, ps * (0.02 + rng() * 0.02));
+        c.lineCap = "round";
+        let x = rng() * ps, y = rng() * ps;
+        c.beginPath(); c.moveTo(x, y);
+        const segs = 2 + ((rng() * 3) | 0);
+        for (let s = 0; s < segs; s++) {
+            x += (rng() - 0.5) * ps * 0.9; y += (rng() - 0.5) * ps * 0.9;
+            c.lineTo(x, y);
+        }
+        c.stroke();
+    }
+    // Bevel: catch light top-left, shadow bottom-right, for a chunky stone feel.
+    c.lineWidth = Math.max(1, ps * 0.07);
+    c.strokeStyle = "rgba(255,255,255,0.10)";
+    c.beginPath(); c.moveTo(0, ps); c.lineTo(0, 0); c.lineTo(ps, 0); c.stroke();
+    c.strokeStyle = "rgba(0,0,0,0.30)";
+    c.beginPath(); c.moveTo(ps, 0); c.lineTo(ps, ps); c.lineTo(0, ps); c.stroke();
+    return cv;
+}
+
+function ensureAtlas(floorHex, rockHex) {
+    const dpr = window.devicePixelRatio || 1;
+    const ps = Math.max(6, Math.round(tile * dpr));
+    const key = `${ps}|${floorHex}|${rockHex}`;
+    if (atlas && atlas.key === key) return atlas;
+    const floor = [], rock = [];
+    for (let i = 0; i < NVAR; i++) {
+        floor.push(makeFloorTile(ps, floorHex, i));
+        rock.push(makeRockTile(ps, rockHex, i));
+    }
+    atlas = { key, floor, rock };
+    return atlas;
+}
+
+function roundRectPath(c, x, y, w, h, tl, tr, br, bl) {
+    c.beginPath();
+    c.moveTo(x + tl, y);
+    c.arcTo(x + w, y, x + w, y + h, tr);
+    c.arcTo(x + w, y + h, x, y + h, br);
+    c.arcTo(x, y + h, x, y, bl);
+    c.arcTo(x, y, x + w, y, tl);
+    c.closePath();
+}
+
+function drawWorld(cam, ax, ay) {
+    const { tiles, colors, x0, y0 } = snap;
+    const rows = tiles.length, cols = tiles[0].length;
+    const at = ensureAtlas(colors.floor, colors.rock);
+    const half = tile / 2, sz = tile + 1, rad = tile * 0.3;
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(-cam.h);                     // rotate the world so heading points up
+    for (let r = 0; r < rows; r++) {
+        const wy = y0 + r, row = tiles[r];
+        const ry = Math.round((wy - cam.y) * tile - half);
+        for (let c = 0; c < cols; c++) {
+            const rx = Math.round((x0 + c - cam.x) * tile - half);
+            const vi = (rngAt(x0 + c, wy)() * NVAR) | 0;
+            if (row[c]) {
+                ctx.drawImage(at.floor[vi], rx, ry, sz, sz);
+                continue;
+            }
+            // Round only corners exposed to floor, so rock masses stay solid.
+            const up = r > 0 ? tiles[r - 1][c] : false;
+            const dn = r < rows - 1 ? tiles[r + 1][c] : false;
+            const lf = c > 0 ? row[c - 1] : false;
+            const rt = c < cols - 1 ? row[c + 1] : false;
+            const tl = up && lf ? rad : 0, tr = up && rt ? rad : 0;
+            const br = dn && rt ? rad : 0, bl = dn && lf ? rad : 0;
+            if (tl || tr || br || bl) {
+                ctx.drawImage(at.floor[vi], rx, ry, sz, sz);   // sand shows at the cut
+                ctx.save();
+                roundRectPath(ctx, rx, ry, sz, sz, tl, tr, br, bl);
+                ctx.clip();
+                ctx.drawImage(at.rock[vi], rx, ry, sz, sz);
+                ctx.restore();
+            } else {
+                ctx.drawImage(at.rock[vi], rx, ry, sz, sz);
+            }
+        }
+    }
+    ctx.restore();
+}
+
+// ---- Player: a retro mining robot, always drawn facing up ----
+// Sized to fill ~one tile so the sprite matches the tile-based collision hitbox.
+function drawRobot(cx, cy, u, colors, now) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    const eye = "#5ffbe0", accent = colors.player;
+    ctx.lineJoin = "round";
+
+    ctx.fillStyle = "rgba(0,0,0,0.30)";
+    ctx.beginPath(); ctx.ellipse(0, u * 0.40, u * 0.44, u * 0.18, 0, 0, TAU); ctx.fill();
+
+    // Treads down each side.
+    const tW = u * 0.2, tH = u * 0.66, tX = u * 0.3, tY = -u * 0.3;
+    for (const sgn of [-1, 1]) {
+        rr(sgn * tX - tW / 2, tY, tW, tH, u * 0.06);
+        ctx.fillStyle = "#33393f"; ctx.fill();
+        ctx.lineWidth = Math.max(1, u * 0.02); ctx.strokeStyle = "#12151a"; ctx.stroke();
+        ctx.fillStyle = "#1c2024";
+        for (let i = 0; i < 5; i++) {
+            const ly = tY + u * 0.06 + i * (tH - u * 0.12) / 4;
+            ctx.fillRect(sgn * tX - tW / 2 + u * 0.02, ly, tW - u * 0.04, u * 0.03);
+        }
+    }
+
+    // Drill, pointing up.
+    const dTip = -u * 0.46, dBase = -u * 0.2, dW = u * 0.16;
+    const dg = ctx.createLinearGradient(-dW, 0, dW, 0);
+    dg.addColorStop(0, "#9aa3b2"); dg.addColorStop(0.5, "#eef2f7"); dg.addColorStop(1, "#6b7280");
+    ctx.fillStyle = dg;
+    ctx.beginPath(); ctx.moveTo(0, dTip); ctx.lineTo(dW, dBase); ctx.lineTo(-dW, dBase); ctx.closePath();
+    ctx.fill(); ctx.lineWidth = Math.max(1, u * 0.02); ctx.strokeStyle = "#2a2f38"; ctx.stroke();
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    for (let i = 1; i <= 2; i++) {
+        const t = i / 3, yy = dBase - (dBase - dTip) * t;
+        ctx.beginPath(); ctx.moveTo(-dW * (1 - t), yy); ctx.lineTo(dW * (1 - t), yy - u * 0.03); ctx.stroke();
+    }
+
+    // Body.
+    const bx = -u * 0.28, by = -u * 0.12, bw = u * 0.56, bh = u * 0.46;
+    const bg = ctx.createLinearGradient(0, by, 0, by + bh);
+    bg.addColorStop(0, "#cfd6e0"); bg.addColorStop(1, "#8b93a1");
+    rr(bx, by, bw, bh, u * 0.12); ctx.fillStyle = bg; ctx.fill();
+    ctx.lineWidth = Math.max(1.5, u * 0.03); ctx.strokeStyle = "#2a2f38"; ctx.stroke();
+    rr(bx, by + bh * 0.52, bw, bh * 0.2, u * 0.04); ctx.fillStyle = accent; ctx.fill();
+
+    // Head with a glowing visor.
+    const hx = -u * 0.2, hy = -u * 0.28, hw = u * 0.4, hh = u * 0.22;
+    rr(hx, hy, hw, hh, u * 0.08);
+    const hg = ctx.createLinearGradient(0, hy, 0, hy + hh);
+    hg.addColorStop(0, "#eef2f7"); hg.addColorStop(1, "#aab2c0");
+    ctx.fillStyle = hg; ctx.fill();
+    ctx.lineWidth = Math.max(1, u * 0.025); ctx.strokeStyle = "#2a2f38"; ctx.stroke();
+    rr(hx + hw * 0.14, hy + hh * 0.3, hw * 0.72, hh * 0.42, u * 0.04);
+    ctx.fillStyle = eye; ctx.shadowColor = eye; ctx.shadowBlur = u * 0.25; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillRect(hx + hw * 0.2, hy + hh * 0.36, hw * 0.16, hh * 0.28);
+
+    // Corner bolts.
+    ctx.fillStyle = "#6b7280";
+    for (const [sx, sy] of [[bx + u * 0.05, by + u * 0.05], [bx + bw - u * 0.05, by + u * 0.05],
+    [bx + u * 0.05, by + bh - u * 0.05], [bx + bw - u * 0.05, by + bh - u * 0.05]]) {
+        ctx.beginPath(); ctx.arc(sx, sy, u * 0.03, 0, TAU); ctx.fill();
+    }
+
+    // Antenna with a blinking beacon.
+    ctx.strokeStyle = "#6b7280"; ctx.lineWidth = Math.max(1, u * 0.02);
+    ctx.beginPath(); ctx.moveTo(hx + hw * 0.16, hy); ctx.lineTo(hx + hw * 0.02, hy - u * 0.14); ctx.stroke();
+    const blink = 0.5 + 0.5 * Math.sin(now / 200);
+    ctx.fillStyle = `rgba(255,80,80,${0.5 + 0.5 * blink})`;
+    ctx.shadowColor = "#ff5050"; ctx.shadowBlur = u * 0.2 * blink;
+    ctx.beginPath(); ctx.arc(hx + hw * 0.02, hy - u * 0.15, u * 0.035, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
+
+    ctx.restore();
+}
+
+// ---- Wall-bump red screen flash ----
+let bumpPeak = 0, bumpStart = 0;
+const BUMP_MS = 450;
+function bumpGlow() {
+    const t = (performance.now() - bumpStart) / BUMP_MS;
+    return t >= 1 ? 0 : bumpPeak * (1 - t * t);
+}
+
 function draw() {
     requestAnimationFrame(draw);
     const dpr = window.devicePixelRatio || 1;
@@ -352,37 +577,22 @@ function draw() {
     }
 
     const cam = currentCam();
-    const { tiles, colors, x0, y0 } = snap;
-    const rows = tiles.length, cols = tiles[0].length;
+    const colors = snap.colors;
     const ax = W / 2, ay = H * ANCHOR_Y;   // player anchor on screen
 
-    ctx.save();
-    ctx.translate(ax, ay);
-    ctx.rotate(-cam.h);                     // rotate the world so heading points up
-    const half = tile / 2;
-    for (let r = 0; r < rows; r++) {
-        const wy = y0 + r, row = tiles[r];
-        const ty = (wy - cam.y) * tile - half;
-        for (let c = 0; c < cols; c++) {
-            ctx.fillStyle = row[c] ? colors.floor : colors.rock;
-            ctx.fillRect(Math.round((x0 + c - cam.x) * tile - half), Math.round(ty),
-                tile + 1, tile + 1);
-        }
-    }
-    ctx.restore();
-
+    drawWorld(cam, ax, ay);
     drawGems(cam, ax, ay, W, H, colors);
+    drawRobot(ax, ay, tile, colors, performance.now());
 
-    // Player: an arrow at the anchor, always pointing up.
-    const s = tile * 0.55;
-    ctx.fillStyle = colors.player;
-    ctx.beginPath();
-    ctx.moveTo(ax, ay - s);
-    ctx.lineTo(ax - s * 0.62, ay + s * 0.55);
-    ctx.lineTo(ax, ay + s * 0.2);
-    ctx.lineTo(ax + s * 0.62, ay + s * 0.55);
-    ctx.closePath();
-    ctx.fill();
+    // Brief red vignette that fades after a wall bump.
+    const flash = bumpGlow();
+    if (flash > 0.002) {
+        const g = ctx.createRadialGradient(
+            W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.72);
+        g.addColorStop(0, "rgba(255,40,40,0)");
+        g.addColorStop(1, `rgba(255,60,60,${flash})`);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
 
     drawHUD(cam, W, H);
 }
@@ -396,6 +606,10 @@ function onSnapshot(s) {
     haveCam = true;
     snap = s;
     if (s.seed && typeof s.score === "number") bumpHi(s.seed, s.style, s.score);
+    if (s.bump && s.max_speed) {           // wall hit: kick off the red flash
+        const i = Math.min(0.38, 0.12 + (s.bump / s.max_speed) * 0.5);
+        if (i > bumpGlow()) { bumpPeak = i; bumpStart = performance.now(); }
+    }
     if (s.dead && !gameOver) showGameOver();
     else if (!s.dead) gameOver = false;
 }

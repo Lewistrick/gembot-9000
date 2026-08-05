@@ -504,16 +504,23 @@ def _hex(r: float, g: float, b: float) -> str:
 
 
 def colors_for_seed(seed: int, distance: float = 0.0) -> dict[str, str]:
-    """Derive a floor (light tint) and rock (dark tint) colour from the seed.
+    """Derive a floor and a rock colour from the seed.
 
-    ``distance`` (tiles from the origin) drifts the hue very slowly, so the world
-    gradually changes colour the further the player travels from the centre.
+    Floor and rock get *independent* hues and saturations, so a world can pair
+    (say) a sandy floor with blue-grey rock. Only the lightness is constrained:
+    floor is always light and rock always dark, keeping the two readable apart.
+
+    ``distance`` (tiles from the origin) drifts both hues very slowly, so the
+    world gradually recolours the further the player travels from the centre.
     """
-    hue = (_rand01(seed, 0xC010) + _HUE_RATE * distance) % 1.0
-    sat = 0.30 + 0.35 * _rand01(seed, 0xC011)
-    floor = colorsys.hls_to_rgb(hue, 0.82, sat)
-    rock = colorsys.hls_to_rgb(hue, 0.22, sat * 0.9)
-    grid = colorsys.hls_to_rgb(hue, 0.74, sat)
+    drift = _HUE_RATE * distance
+    floor_hue = (_rand01(seed, 0xC010) + drift) % 1.0
+    rock_hue = (_rand01(seed, 0xC013) + drift) % 1.0
+    floor_sat = 0.24 + 0.45 * _rand01(seed, 0xC011)
+    rock_sat = 0.18 + 0.40 * _rand01(seed, 0xC014)
+    floor = colorsys.hls_to_rgb(floor_hue, 0.82, floor_sat)  # always light
+    rock = colorsys.hls_to_rgb(rock_hue, 0.22, rock_sat)  # always dark
+    grid = colorsys.hls_to_rgb(floor_hue, 0.74, floor_sat)
     # Gem colour is fixed by the seed (no distance drift) and vivid, to contrast.
     gem = colorsys.hls_to_rgb(_rand01(seed, 0x6E72), 0.58, 0.95)
     return {

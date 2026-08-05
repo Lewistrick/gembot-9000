@@ -30,7 +30,7 @@ _STEER_MIN = 0.35  # fraction of the steering rate available at a standstill
 
 # Energy / scoring knobs (energy runs 0..100; tweak freely to tune the game).
 DRAIN_ENERGY_LOSS = 1.8  # baseline energy drained per second, even standing still
-DRAIN_SPEED_LOSS = 0.25  # extra energy/second per tile/s of speed (moving costs more)
+DRAIN_ACCEL_LOSS = 4.0  # extra energy/second while accelerating (throttle, below top speed)
 HIT_ENERGY_LOSS = 0.9  # energy lost per tile/s of impact driven into a wall
 GEM_ENERGY_GAIN = 0.6  # energy recovered per gem = its value times this factor
 
@@ -148,8 +148,12 @@ class Session:
         if self.speed < 0.05 and not self.up:
             self.speed = 0.0
 
-        # Power drain: a baseline idle cost plus more the faster you drive.
-        self.energy -= (DRAIN_ENERGY_LOSS + DRAIN_SPEED_LOSS * self.speed) * dt
+        # Power drain: a baseline idle cost, plus more while the motor is
+        # actually working (throttle held and not yet at top speed).
+        drain = DRAIN_ENERGY_LOSS
+        if self.up and self.speed < _MAX_SPEED:
+            drain += DRAIN_ACCEL_LOSS
+        self.energy -= drain * dt
 
         # Fade any lingering knockback from an earlier bounce, then apply it.
         self.kx *= _KNOCK_KEEP
