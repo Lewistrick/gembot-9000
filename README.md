@@ -32,14 +32,15 @@ pebbles. Mined gems stay mined for the rest of the run, even after their chunk
 scrolls away and back.
 
 Keeping the lights on costs **energy** (the battery gauge, bottom-right, runs a
-green → yellow → red gradient from full to empty). It drains slowly all the time,
-takes a bigger hit when you drive into a rock (the harder and more head-on the
-impact, the more it costs), and is replenished by mining gems (each gem restores its
-value times a factor, so richer gems recharge you more). When it reaches zero the
-run ends on a **game-over** screen showing your final score, where you can play
-again or return to the menu. The drain-rate, hit-cost and gem-gain factor are all
-tunable knobs (`DRAIN_ENERGY_LOSS`, `HIT_ENERGY_LOSS`, `GEM_ENERGY_GAIN` in
-`app/server.py`).
+green → yellow → red gradient from full to empty). It drains slowly even when
+you're parked and faster the quicker you drive, takes a bigger hit when you slam
+into a rock (the harder and more head-on the impact, the more it costs — and you
+**bounce** off it), and is replenished by mining gems (each gem restores its value
+times a factor, so richer gems recharge you more). When it reaches zero the run
+ends on a **game-over** screen showing your final score, where you can play again
+or return to the menu. The idle drain, speed drain, hit-cost and gem-gain factor
+are all tunable knobs (`DRAIN_ENERGY_LOSS`, `DRAIN_SPEED_LOSS`, `HIT_ENERGY_LOSS`,
+`GEM_ENERGY_GAIN` in `app/server.py`).
 
 The rest of the dashboard is drawn on the canvas: a **compass** up top, your
 **score** and **distance** top-right, and an analog **speedometer** bottom-left.
