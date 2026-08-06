@@ -18,6 +18,7 @@ facing up) and **the map rotates to your heading**:
 - **↑ accelerate**, **↓ brake**, **← / → steer** — steering is gentler at a crawl
   and firmer at speed. Release the throttle and you coast to a stop; glancing a
   rock makes you scrape along it, and slamming one **bounces** you off.
+- **Space** (or the on-screen ↻ button) triggers a smooth 180° **about-face**.
 - **PageUp / PageDown** zoom the map in and out.
 
 The floor and rock each get their own seed-picked colour (floor always light, rock
@@ -46,10 +47,14 @@ again or return to the menu. The idle drain, acceleration drain, hit-cost and
 gem-gain factor are all tunable knobs (`DRAIN_ENERGY_LOSS`, `DRAIN_ACCEL_LOSS`,
 `HIT_ENERGY_LOSS`, `GEM_ENERGY_GAIN` in `app/server.py`).
 
-The rest of the dashboard is drawn on the canvas: a **compass** up top, your
-**score** and **distance** top-right, and an analog **speedometer** bottom-left.
-Tap the **☰** button (top-left) to pause, which opens an overlay to resume,
-restart the run from the origin, return to the main menu, or read How to Play.
+The rest of the dashboard is drawn on the canvas. The **compass** up top also acts
+as a **radar**: uncollected gems within range show up as colour-coded blips
+(bigger and brighter the closer they are), and a **house marker** points back to
+the origin — handy, since gems are densest near the centre. Your **score** and
+**distance** are top-right, with an analog **speedometer** and an **about-face**
+button along the bottom. Tap the **☰** button (top-left) to pause, which opens an
+overlay to resume, restart the run from the origin, return to the main menu, or
+read How to Play.
 
 Everything starts at the **main menu**, where you:
 

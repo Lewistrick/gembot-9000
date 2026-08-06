@@ -41,6 +41,12 @@ _BOUNCE = 0.85  # fraction of the into-wall speed reflected back as knockback
 _HIT_SLOW = 0.85  # forward speed kept after a hit (times the glancing fraction)
 _KNOCK_KEEP = 0.88  # knockback velocity retained per tick (~0.35 s to fade out)
 
+# About-face knobs. The Space button swings the truck 180° smoothly (rather than
+# snapping the view around), coasting down to a near-stop as it pivots.
+_FLIP_TIME = 0.6  # seconds to complete the half-turn
+_FLIP_RATE = math.pi / _FLIP_TIME  # radians/second while turning around
+_FLIP_SLOW = 0.88  # speed retained per tick during the turn (coasts to a pivot)
+
 
 def _today() -> str:
     """Today's local date as an ISO string, used as the default seed."""
@@ -64,6 +70,7 @@ class Session:
         self.kx = 0.0  # knockback velocity (tiles/s), decoupled from heading
         self.ky = 0.0
         self.bump = 0.0  # into-wall impact this tick (drives the client's red flash)
+        self.flip_remaining = 0.0  # radians left in a smooth 180° about-face
         self.up = self.down = self.left = self.right = False
         self.cols = 41
         self.rows = 41
@@ -79,6 +86,7 @@ class Session:
         """Place the player on the nearest floor tile to the origin, at rest."""
         self.speed = 0.0
         self.kx = self.ky = self.bump = 0.0
+        self.flip_remaining = 0.0
         self.heading = 0.0
         for radius in range(64):
             for dy in range(-radius, radius + 1):
@@ -109,6 +117,12 @@ class Session:
         self._spawn()
         self._dirty = True
 
+    def request_flip(self) -> None:
+        """Begin a smooth 180° about-face (ignored if one is already running)."""
+        if self.running and not self.dead and self.flip_remaining == 0.0:
+            self.flip_remaining = math.pi
+            self._dirty = True
+
     def set_running(self, on: bool) -> None:
         """Pause/resume the run (menu, pause overlay). Stops drain when off."""
         if not self.dead:
@@ -133,25 +147,33 @@ class Session:
         if not self.running or self.dead:
             return
         dt = _TICK
-        # Turn rate scales with speed (subtle at a crawl, fuller at speed).
-        turn = _STEER * (_STEER_MIN + (1.0 - _STEER_MIN) * self.speed / _MAX_SPEED)
-        if self.left:
-            self.heading -= turn * dt
-        if self.right:
-            self.heading += turn * dt
-        if self.up:
-            self.speed += _ACCEL * dt
-        if self.down:
-            self.speed -= _BRAKE * dt
-        self.speed -= self.speed * _DRAG * dt  # coasting drag
-        self.speed = _clamp(self.speed, 0.0, _MAX_SPEED)
-        if self.speed < 0.05 and not self.up:
-            self.speed = 0.0
+        if self.flip_remaining > 0.0:
+            # About-face: rotate steadily toward the reversed heading and coast
+            # down to a near-stop, ignoring steer/throttle until it finishes.
+            step = min(self.flip_remaining, _FLIP_RATE * dt)
+            self.heading += step
+            self.flip_remaining -= step
+            self.speed *= _FLIP_SLOW
+        else:
+            # Turn rate scales with speed (subtle at a crawl, fuller at speed).
+            turn = _STEER * (_STEER_MIN + (1.0 - _STEER_MIN) * self.speed / _MAX_SPEED)
+            if self.left:
+                self.heading -= turn * dt
+            if self.right:
+                self.heading += turn * dt
+            if self.up:
+                self.speed += _ACCEL * dt
+            if self.down:
+                self.speed -= _BRAKE * dt
+            self.speed -= self.speed * _DRAG * dt  # coasting drag
+            self.speed = _clamp(self.speed, 0.0, _MAX_SPEED)
+            if self.speed < 0.05 and not self.up:
+                self.speed = 0.0
 
         # Power drain: a baseline idle cost, plus more while the motor is
-        # actually working (throttle held and not yet at top speed).
+        # actually working (throttle held, below top speed, and not mid-flip).
         drain = DRAIN_ENERGY_LOSS
-        if self.up and self.speed < _MAX_SPEED:
+        if self.flip_remaining == 0.0 and self.up and self.speed < _MAX_SPEED:
             drain += DRAIN_ACCEL_LOSS
         self.energy -= drain * dt
 
@@ -268,6 +290,7 @@ class Session:
             "energy": self.energy,
             "dead": self.dead,
             "bump": self.bump,
+            "flipping": self.flip_remaining > 0.0,
             "player": {
                 "x": self.px,
                 "y": self.py,
@@ -315,6 +338,8 @@ async def _reader(sock: WebSocket, session: Session) -> None:
             )
         elif action == "active":
             session.set_running(bool(msg.get("on")))
+        elif action == "flip":
+            session.request_flip()
 
 
 # Sessions are keyed by a client token so a dropped/reconnected socket (e.g. a

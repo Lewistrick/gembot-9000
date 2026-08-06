@@ -5,6 +5,8 @@ const stage = document.getElementById("stage");
 const MARGIN = 4;              // extra viewport tiles beyond what rotation needs
 const MIN_TILE = 10, MAX_TILE = 60, ZOOM_STEP = 3;
 const ANCHOR_Y = 0.75;         // player sits 75% down the screen (more map ahead)
+const RADAR_RADIUS = 45;       // tiles: how far the compass radar spots gems
+const RADAR_MAX = 12;          // most gem blips shown on the compass at once
 let tile = 26;
 let ws = null;
 let snap = null;               // latest server snapshot
@@ -154,6 +156,12 @@ const HUD = {
 };
 const DIR = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
+// Compass bearing (deg) of a world offset, matching the heading convention
+// (0 = up/-y, increasing clockwise). Forward = (sin h, -cos h).
+function bearingTo(dx, dy) { return Math.atan2(dx, -dy) * 180 / Math.PI; }
+// Signed smallest difference a - b, wrapped to (-180, 180].
+function angleDelta(a, b) { return ((a - b + 540) % 360) - 180; }
+
 function rr(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -228,6 +236,41 @@ function drawCompass(cam, x, y, w, h) {
         }
     }
     ctx.restore();
+
+    // ---- Radar overlay: nearby gems + the way home ----
+    const laneY = y + h * 0.30;
+    ctx.save();
+    rr(x + 2, y + 2, w - 4, h - 4, Math.min(9, h * 0.2)); ctx.clip();
+    if (snap.gems && snap.gems.length) {
+        const gemCol = snap.colors.gem;
+        const near = [];
+        for (const gm of snap.gems) {
+            const dx = gm.x - cam.x, dy = gm.y - cam.y, dist = Math.hypot(dx, dy);
+            if (dist > RADAR_RADIUS) continue;
+            const delta = angleDelta(bearingTo(dx, dy), bearing);
+            if (Math.abs(delta) <= VIS / 2) near.push({ delta, dist });
+        }
+        near.sort((a, b) => a.dist - b.dist);
+        ctx.shadowColor = gemCol; ctx.fillStyle = gemCol;
+        for (let i = Math.min(near.length, RADAR_MAX) - 1; i >= 0; i--) {
+            const b = near[i], t = 1 - b.dist / RADAR_RADIUS;   // 0 far .. 1 close
+            const bx = cx + b.delta * ppd, sz = h * (0.06 + 0.1 * t);
+            ctx.globalAlpha = 0.35 + 0.55 * t; ctx.shadowBlur = 6 * t;
+            ctx.beginPath();
+            ctx.moveTo(bx, laneY - sz); ctx.lineTo(bx + sz, laneY);
+            ctx.lineTo(bx, laneY + sz); ctx.lineTo(bx - sz, laneY);
+            ctx.closePath(); ctx.fill();
+        }
+        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+
+    // Home marker: points at the origin, clamped to the strip edge when off-window.
+    const hDelta = angleDelta(bearingTo(-cam.x, -cam.y), bearing);
+    const inWin = Math.abs(hDelta) <= VIS / 2;
+    const hx = inWin ? cx + hDelta * ppd : (hDelta > 0 ? x + w - h * 0.22 : x + h * 0.22);
+    drawHomeMarker(hx, laneY, h, inWin, hDelta > 0);
+
     // Fixed centre marker (your heading).
     ctx.fillStyle = HUD.amber; ctx.shadowColor = HUD.amber; ctx.shadowBlur = 8;
     ctx.beginPath();
@@ -236,6 +279,27 @@ function drawCompass(cam, x, y, w, h) {
     ctx.lineTo(cx + h * 0.13, y + h * 0.06);
     ctx.closePath(); ctx.fill();
     ctx.shadowBlur = 0;
+}
+
+function drawHomeMarker(hx, ly, h, inWin, toRight) {
+    const s = h * 0.13;
+    ctx.save();
+    ctx.fillStyle = HUD.amber; ctx.shadowColor = HUD.amber; ctx.shadowBlur = 6;
+    ctx.beginPath();                              // house body
+    ctx.moveTo(hx - s, ly - s * 0.1); ctx.lineTo(hx - s, ly + s);
+    ctx.lineTo(hx + s, ly + s); ctx.lineTo(hx + s, ly - s * 0.1);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();                              // roof
+    ctx.moveTo(hx - s * 1.3, ly - s * 0.1); ctx.lineTo(hx, ly - s * 1.15);
+    ctx.lineTo(hx + s * 1.3, ly - s * 0.1); ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    if (!inWin) {                                 // nudge arrow toward the edge
+        const ax = hx + (toRight ? s * 1.8 : -s * 1.8), dir = toRight ? 1 : -1;
+        ctx.beginPath();
+        ctx.moveTo(ax, ly); ctx.lineTo(ax - dir * s, ly - s * 0.7);
+        ctx.lineTo(ax - dir * s, ly + s * 0.7); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
 }
 
 function drawSpeedo(cx, cy, r) {
@@ -320,6 +384,29 @@ function drawBattery(x, y, w, h, frac) {
     ctx.textBaseline = "alphabetic";
 }
 
+// Bottom-centre about-face button (Space). U-turn arrow; glows while flipping.
+function drawFlipButton(cx, cy, r, active) {
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU);
+    ctx.fillStyle = active ? "rgba(79,242,200,0.22)" : "rgba(4,12,12,0.62)"; ctx.fill();
+    ctx.lineWidth = Math.max(1.5, r * 0.09); ctx.strokeStyle = HUD.neon;
+    ctx.shadowColor = HUD.neon; ctx.shadowBlur = active ? 12 : 7; ctx.stroke(); ctx.shadowBlur = 0;
+    const w2 = r * 0.34, top = cy - r * 0.26, bot = cy + r * 0.3;
+    ctx.strokeStyle = HUD.neon; ctx.lineWidth = Math.max(2, r * 0.12);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.shadowColor = HUD.neon; ctx.shadowBlur = 5;
+    ctx.beginPath();
+    ctx.moveTo(cx - w2, bot); ctx.lineTo(cx - w2, top);
+    ctx.arc(cx, top, w2, Math.PI, 0); ctx.lineTo(cx + w2, bot);
+    ctx.stroke(); ctx.shadowBlur = 0;
+    const hs = r * 0.18;                          // arrowhead pointing down
+    ctx.fillStyle = HUD.neon;
+    ctx.beginPath();
+    ctx.moveTo(cx + w2, bot + hs);
+    ctx.lineTo(cx + w2 - hs * 0.85, bot - hs * 0.2);
+    ctx.lineTo(cx + w2 + hs * 0.85, bot - hs * 0.2);
+    ctx.closePath(); ctx.fill();
+}
+
 function drawHUD(cam, W, H) {
     const S = Math.min(W, H);
     const M = Math.max(8, S * 0.028);
@@ -335,6 +422,10 @@ function drawHUD(cam, W, H) {
     const batW = Math.max(64, Math.min(140, S * 0.18)), batH = batW * 0.46;
     const energy = snap.energy == null ? 100 : snap.energy;
     drawBattery(W - M - batW, H - M - batH, batW, batH, energy / 100);
+    const fbR = Math.max(20, Math.min(38, S * 0.05));
+    const fbx = W / 2, fby = H - M - fbR;
+    drawFlipButton(fbx, fby, fbR, snap.flipping);
+    hudHit.flip = { x: fbx - fbR, y: fby - fbR, w: 2 * fbR, h: 2 * fbR };
 }
 
 // ---- Per-world tile textures (sandy floor, veined stone) ----
@@ -627,6 +718,9 @@ window.addEventListener("keydown", (e) => {
     if (k) {
         e.preventDefault();
         if (!held[k]) { held[k] = true; sendControls(); }
+    } else if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        if (!e.repeat) send({ action: "flip" });   // about-face
     } else if (e.key === "PageUp" || e.key === "PageDown") {
         e.preventDefault();
         const next = tile + (e.key === "PageUp" ? ZOOM_STEP : -ZOOM_STEP);
@@ -649,11 +743,11 @@ window.addEventListener("resize", reportViewport);
 // Tap the on-canvas hamburger (top-left) to open the pause overlay.
 canvas.addEventListener("click", (e) => {
     if (!playing) return;
-    const hb = hudHit.hamburger;
-    if (!hb) return;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left, y = e.clientY - rect.top;
-    if (x >= hb.x && x <= hb.x + hb.w && y >= hb.y && y <= hb.y + hb.h) openPause();
+    const hit = (b) => b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    if (hit(hudHit.hamburger)) openPause();
+    else if (hit(hudHit.flip)) send({ action: "flip" });
 });
 
 // Stable per-browser token so a reconnect resumes the same run (position,
