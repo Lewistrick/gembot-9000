@@ -48,26 +48,29 @@ const ART = (() => {
         c.restore();
     }
 
-    // Hub (player-built station): steel platform, ring in the builder's colour,
-    // and a blinking signal lamp. `tilt` is only used by the preview ghost.
+    // Hub (player-built station): square steel platform with a frame in the
+    // builder's colour and a blinking signal lamp. `ghost` = build preview.
     function hub(c, cx, cy, u, color, now, ghost) {
         c.save();
         c.translate(cx, cy);
         if (ghost) c.globalAlpha = 0.6;
         c.fillStyle = "rgba(0,0,0,0.30)";
-        c.beginPath(); c.ellipse(0, u * 0.1, u * 0.62, u * 0.5, 0, 0, TAU2); c.fill();
-        c.beginPath(); c.arc(0, 0, u * 0.55, 0, TAU2);               // outer ring (builder colour)
+        pill(c, -u * 0.5, -u * 0.4, u * 1.06, u * 1.0, u * 0.12); c.fill();
+        pill(c, -u * 0.5, -u * 0.5, u, u, u * 0.1);                  // frame (builder colour)
         c.fillStyle = color; c.fill();
         c.lineWidth = Math.max(1.5, u * 0.04); c.strokeStyle = "#1c2024"; c.stroke();
-        c.beginPath(); c.arc(0, 0, u * 0.42, 0, TAU2);               // steel deck
-        const g = c.createLinearGradient(0, -u * 0.4, 0, u * 0.4);
+        pill(c, -u * 0.38, -u * 0.38, u * 0.76, u * 0.76, u * 0.06); // steel deck
+        const g = c.createLinearGradient(0, -u * 0.38, 0, u * 0.38);
         g.addColorStop(0, "#d6dce6"); g.addColorStop(1, "#7d8594");
         c.fillStyle = g; c.fill(); c.stroke();
         c.strokeStyle = "rgba(0,0,0,0.25)"; c.lineWidth = Math.max(1, u * 0.025);
-        for (let i = 0; i < 4; i++) {                                // deck plating lines
-            const a = i * Math.PI / 4;
-            c.beginPath(); c.moveTo(Math.cos(a) * u * 0.42, Math.sin(a) * u * 0.42);
-            c.lineTo(-Math.cos(a) * u * 0.42, -Math.sin(a) * u * 0.42); c.stroke();
+        c.beginPath();                                               // deck plating lines
+        c.moveTo(-u * 0.38, 0); c.lineTo(u * 0.38, 0);
+        c.moveTo(0, -u * 0.38); c.lineTo(0, u * 0.38);
+        c.stroke();
+        c.fillStyle = "#6b7280";                                     // corner bolts
+        for (const [bx, by] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+            c.beginPath(); c.arc(bx * u * 0.3, by * u * 0.3, u * 0.03, 0, TAU2); c.fill();
         }
         c.beginPath(); c.arc(0, 0, u * 0.16, 0, TAU2);               // lamp housing
         c.fillStyle = "#2a2f38"; c.fill();
@@ -80,6 +83,7 @@ const ART = (() => {
 
     // Base depot: big amber platform with the same house icon the radar uses.
     function base(c, cx, cy, u, now) {
+        u *= 0.5;                                                    // half-size depot
         c.save();
         c.translate(cx, cy);
         c.fillStyle = "rgba(0,0,0,0.32)";
@@ -111,9 +115,6 @@ const ART = (() => {
         c.closePath(); c.fill();
         c.shadowBlur = 0;
         c.fillStyle = "#2a2318"; c.fillRect(-s * 0.22, s * 0.38, s * 0.44, s * 0.62);
-        c.font = `bold ${u * 0.3}px "Courier New", monospace`;
-        c.textAlign = "center"; c.textBaseline = "middle";
-        c.fillStyle = "#ffcf4d"; c.fillText("BASE", 0, u * 0.98);
         const blink = 0.5 + 0.5 * Math.sin(now / 300);               // corner beacons
         for (let i = 0; i < 4; i++) {
             const a = Math.PI / 4 + i * Math.PI / 2;

@@ -119,10 +119,10 @@ function scene(kind) {
         // Row 2: hubs, base, tracks.
         [ACC[1], ACC[5], ACC[2]].forEach((col, i) => ART.hub(ctx, X(i, 8), rowY[1], tile, col, now));
         ART.hub(ctx, X(3, 8), rowY[1], tile, ACC[3], now, true);
-        ART.base(ctx, X(4.55, 8), rowY[1], tile * 0.9, now);
+        ART.base(ctx, X(4.55, 8), rowY[1], tile, now);
         ART.track(ctx, X(5.85, 8), rowY[1] - tile * 0.55, X(7.4, 8), rowY[1] - tile * 0.55, tile, 1);
         ART.track(ctx, X(5.85, 8), rowY[1] + tile * 0.55, X(7.4, 8), rowY[1] - tile * 0.1, tile, 0);
-        label("HUBS (ring = builder's colour, 4th = build preview)", X(1.5, 8), rowY[1] - tile * 1.05);
+        label("HUBS (frame = builder's colour, 4th = build preview, square)", X(1.5, 8), rowY[1] - tile * 1.05);
         label("BASE DEPOT", X(4.55, 8), rowY[1] - tile * 1.65);
         label("TRACKS", X(6.6, 8), rowY[1] - tile * 1.05);
         // Row 3: cart, bubble, crown.
