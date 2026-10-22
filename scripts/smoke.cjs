@@ -92,6 +92,43 @@ async function waitFor(page, fn, what, timeout = 8000) {
     check(await b.evaluate((id) => blocked.has(id), annId), "B can block Ann (stored locally)");
     check(await a.evaluate(() => blocked.size === 0), "A's block list is unaffected");
 
+    // --- Rail UI: feed the page server-style messages and exercise the panels ---
+    await a.evaluate(() => {
+        HANDLERS.hubs({ list: [[1, 14, 0, 1, 0], [2, 28, 0, 2, 1]] });
+        G.carts.set(1, { from: { x: 10, y: 0, h: 0 }, to: { x: 11, y: 0, h: 0 }, t0: performance.now(), a: 0 });
+        HANDLERS.rail({ ok: true, msg: "Built (-39)" });
+        HANDLERS.toll({ v: 1, from: "Bob" });
+    });
+    await sleep(300);   // let a few frames draw tracks, hubs, the cart and toasts
+    await a.evaluate(() => HANDLERS.net({
+        at: 2, cargo: 5, ship: { toll: 1 },
+        hubs: [
+            { id: 0, x: 0, y: 0, out: null, by: "BASE", bn: 0, toll: 1 },
+            { id: 1, x: 14, y: 0, out: 0, by: "Ann", bn: 1, toll: 1 },
+            { id: 2, x: 28, y: 0, out: 1, by: "Bob", bn: 2, toll: 0 },
+        ],
+    }));
+    check(await a.evaluate(() => !netMapEl.classList.contains("hidden")), "network map opens");
+    check(await a.evaluate(() => canSteer() === false), "steering is off while the map is open");
+    await a.evaluate(() => { const h = nmHits.find((x) => x.id === 1); $("nmCanvas").dispatchEvent(new MouseEvent("click", { clientX: $("nmCanvas").getBoundingClientRect().left + h.px, clientY: $("nmCanvas").getBoundingClientRect().top + h.py, bubbles: true })); });
+    check(await a.evaluate(() => nmSel === 1 && !$("nmRide").disabled), "tapping a hub selects it and enables Ride");
+    check(await a.evaluate(() => !$("nmShip").disabled && !$("nmBase").disabled), "ship and ride-to-base are offered");
+    await a.keyboard.press("Escape");
+    check(await a.evaluate(() => netMapEl.classList.contains("hidden")), "Escape closes the map");
+
+    await a.evaluate(() => {   // build mode with a fake preview
+        buildMode = { target: { x: 40, y: 0 }, preview: null };
+        onQuote({ ok: true, why: "", cost: 39, x: 40, y: 0, from: [28, 0], new: true, len: 12 });
+    });
+    await sleep(200);
+    check(await a.evaluate(() => !$("buildOk").disabled && overlayOpen()), "a good quote enables Build");
+    await a.evaluate(() => onQuote({ ok: false, why: "Rock in the way", cost: 0, x: 40, y: 0, from: [28, 0], new: true, len: 12 }));
+    await sleep(200);
+    check(await a.evaluate(() => $("buildOk").disabled), "a refused quote disables Build");
+    await a.evaluate(() => endBuildMode());
+    check(await a.evaluate(() => !buildMode && !overlayOpen()), "build mode ends cleanly");
+    await a.evaluate(() => { G.hubs.clear(); G.carts.clear(); });
+
     // --- Status + leave ---
     const status = await (await fetch(`http://localhost:${PORT}/api/status`)).json();
     check(status.online === 2, `status reports 2 online (got ${status.online})`);

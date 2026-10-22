@@ -1,5 +1,6 @@
 """End to end over real websockets (FastAPI TestClient): join, play, chat, limits."""
 
+import hashlib
 import json
 import time
 from collections.abc import Iterator
@@ -8,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.game import MAX_PLAYERS
+from app.grid import World
 from app.server import app
 
 TOKEN_A = "token-aaaaaaaa"
@@ -105,3 +107,52 @@ def test_second_tab_replaces_the_first(client: TestClient) -> None:
             ws2.__exit__(None, None, None)
     finally:
         ws1.__exit__(None, None, None)
+
+
+class OpenWorld(World):
+    """Floor everywhere, no gems: lets the rail tests ignore terrain."""
+
+    def is_floor(self, x: int, y: int) -> bool:
+        return True
+
+    def gem_on_floor(self, x: int, y: int) -> int | None:
+        return None
+
+
+def test_rail_build_netmap_and_ride_over_the_wire(client: TestClient) -> None:
+    pid = hashlib.sha256(TOKEN_A.encode()).hexdigest()[:10]
+    ws, sock = join(client, TOKEN_A, "Ann")
+    try:
+        messages(sock, {"welcome"})
+        game = app.state.hub.game
+        game.world = OpenWorld("t")
+        me = game.players[pid]
+        me.delivered = 500
+        me.place(0, 0)
+
+        sock.send_text(
+            json.dumps({"action": "build_track", "x": 14, "y": 0, "confirm": False})
+        )
+        quote = messages(sock, {"quote"})["quote"][-1]
+        assert quote["ok"] and quote["cost"] == 39 and quote["new"]
+
+        sock.send_text(
+            json.dumps({"action": "build_track", "x": 14, "y": 0, "confirm": True})
+        )
+        got = messages(sock, {"hubs", "built"})
+        assert [1, 14, 0, me.num, 0] in got["hubs"][-1]["list"]
+
+        me.place(14, 0)
+        sock.send_text(json.dumps({"action": "netmap"}))
+        net = messages(sock, {"net"})["net"][-1]
+        assert net["at"] == 1 and {r["id"] for r in net["hubs"]} == {0, 1}
+
+        sock.send_text(json.dumps({"action": "ride", "to": 0}))  # own hub: free
+        riding = False
+        end = time.monotonic() + 5
+        while time.monotonic() < end and not riding:
+            for m in json.loads(sock.receive_text()):
+                riding = riding or (m["t"] == "tick" and m["r"] == 1)
+        assert riding
+    finally:
+        ws.__exit__(None, None, None)

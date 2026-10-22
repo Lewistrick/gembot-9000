@@ -22,6 +22,9 @@ const G = {
     left: 0, leftAt: 0,        // seconds until midnight, as of performance.now() == leftAt
     others: new Map(),         // num -> { from, to, t0 } (interpolated positions)
     meta: new Map(),           // num -> { id, name, chat, hue }
+    hubs: new Map(),           // id -> { id, x, y, bn (builder num), out (hub id or -1) }
+    carts: new Map(),          // id -> { from, to, t0, a } (interpolated like robots)
+    riding: false,
     toasts: [],                // { text, color, t0, dur }
     idleUntil: 0,              // performance.now() deadline of the idle warning, or 0
 };
@@ -86,7 +89,8 @@ function otherPos(o, now) {
 // ---- Connecting ----
 function resetClientWorld() {
     clearWorld();
-    G.others.clear(); G.meta.clear(); G.toasts.length = 0;
+    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.hubs.clear(); G.carts.clear(); G.riding = false;
+    if (typeof clearRailUi === "function") clearRailUi();
     G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
     haveCam = false;
 }
@@ -152,7 +156,7 @@ const HANDLERS = {
         segDur = G.tickMs;
         haveCam = true;
         G.x = m.x; G.y = m.y; G.h = m.h; G.speed = m.s;
-        G.cargo = m.c; G.score = m.sc; G.flipping = m.f;
+        G.cargo = m.c; G.score = m.sc; G.flipping = m.f; G.riding = !!m.r;
         if (m.b) { G.bump = m.b; onBump(m.b); }
         if (m.o) {
             const now = performance.now(), seen = new Set();
@@ -164,6 +168,14 @@ const HANDLERS = {
                 else G.others.set(r[0], { from: to, to, t0: now });
             }
             for (const k of G.others.keys()) if (!seen.has(k)) G.others.delete(k);
+            const keep = new Set();
+            for (const r of m.k || []) {
+                keep.add(r[0]);
+                const to = { x: r[1], y: r[2], h: 0 }, c = G.carts.get(r[0]);
+                if (c) { c.from = otherPos(c, now); c.to = to; c.t0 = now; c.a = r[3]; }
+                else G.carts.set(r[0], { from: to, to, t0: now, a: r[3] });
+            }
+            for (const k of G.carts.keys()) if (!keep.has(k)) G.carts.delete(k);
         }
     },
     board(m) {
@@ -173,6 +185,12 @@ const HANDLERS = {
         if (typeof refreshPlayersPanel === "function") refreshPlayersPanel();
     },
     announce(m) { toast(m.text, HUD.amber, 5000); },
+    hubs(m) { for (const r of m.list) G.hubs.set(r[0], { id: r[0], x: r[1], y: r[2], bn: r[3], out: r[4] }); },
+    rail(m) { toast(m.msg, m.ok ? "#3ef07a" : "#ff6b5e", m.ok ? 2500 : 4000); },
+    toll(m) { toast(`+${m.v} toll from ${m.from}`, "#3ef07a", 2500); },
+    quote(m) { onQuote(m); },
+    built() { endBuildMode(); },
+    net(m) { openNetMap(m); },
     newday(m) {
         // The server closes the socket next; onclose reconnects us into the new day.
         resetClientWorld();

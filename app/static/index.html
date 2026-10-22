@@ -73,6 +73,7 @@
     <section class="panel">
         <button id="resumeBtn" class="btn big">&#9654; Back to the mine</button>
         <button id="pausePlayersBtn" class="btn ghost">Players &amp; blocking</button>
+        <button id="pauseHubBtn" class="btn ghost">Build a hub here (25)</button>
         <button id="pauseHowBtn" class="btn ghost">How to Play</button>
         <button id="leaveBtn" class="btn ghost">&#9632; Leave the mine</button>
     </section>
@@ -93,6 +94,32 @@
     <button id="chatClear" class="btn ghost small">Clear</button>
     <button id="chatCancel" class="btn ghost small">&times;</button>
 </div>
+
+<div id="hubpanel" class="hubpanel hidden">
+    <div id="hubTitle" class="hubtitle"></div>
+    <div class="hubbtns">
+        <button id="hubNet" class="btn big small">Rails &#9656;</button>
+        <button id="hubBuild" class="btn ghost small">Build track</button>
+    </div>
+</div>
+
+<div id="buildbar" class="chatbar hidden">
+    <span id="buildMsg" class="buildmsg">Tap a spot for a new hub, or tap a hub to link to it.</span>
+    <button id="buildOk" class="btn big small" disabled>Build</button>
+    <button id="buildCancel" class="btn ghost small">Cancel</button>
+</div>
+
+<section id="netmap" class="screen hidden">
+    <h2 class="ptitle">Rail network</h2>
+    <canvas id="nmCanvas" class="nmcanvas"></canvas>
+    <p id="nmInfo" class="noticetext">Tap a hub.</p>
+    <div class="nmbtns">
+        <button id="nmRide" class="btn big small" disabled>Ride</button>
+        <button id="nmBase" class="btn ghost small">Ride to base</button>
+        <button id="nmShip" class="btn ghost small">Ship cargo</button>
+        <button id="nmClose" class="btn ghost small">Close</button>
+    </div>
+</section>
 
 <aside id="players" class="players hidden">
     <div class="phead"><span>Players</span><button id="playersClose" class="btn ghost small">&times;</button></div>

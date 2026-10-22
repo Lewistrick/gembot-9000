@@ -40,6 +40,82 @@ function drawOthers(cam, ax, ay, W, H, now) {
     for (const l of labels) drawRobotLabels(l[0], l[1], l[2], now);
 }
 
+// ---- Rail: tracks, hubs and cargo carts ----
+function hubPos(id) {
+    if (id === 0) return [0, 0];
+    const h = G.hubs.get(id);
+    return h ? [h.x, h.y] : null;
+}
+function hubAccent(bn) { return bn ? accent(Math.floor(bn * 137.508) % 360) : "#8a93a0"; }
+
+function drawRail(cam, ax, ay, W, H, now) {
+    const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h), pad = tile * 2;
+    const sp = (x, y) => screenPos(x, y, cam, cosr, sinr, ax, ay);
+    for (const h of G.hubs.values()) {
+        const to = h.out >= 0 ? hubPos(h.out) : null;
+        if (!to) continue;
+        const a = sp(h.x, h.y), b = sp(to[0], to[1]);
+        if (Math.max(a[0], b[0]) < -pad || Math.min(a[0], b[0]) > W + pad ||
+            Math.max(a[1], b[1]) < -pad || Math.min(a[1], b[1]) > H + pad) continue;
+        ART.track(ctx, a[0], a[1], b[0], b[1], tile, 1);       // chevrons point toward the base
+    }
+    for (const h of G.hubs.values()) {
+        const p = sp(h.x, h.y);
+        if (p[0] < -pad || p[0] > W + pad || p[1] < -pad || p[1] > H + pad) continue;
+        ctx.save();
+        ctx.translate(p[0], p[1]); ctx.rotate(-cam.h);          // hubs turn with the map
+        ART.hub(ctx, 0, 0, tile, hubAccent(h.bn), now, false);
+        ctx.restore();
+    }
+}
+
+function drawCarts(cam, ax, ay, W, H, now, colors) {
+    const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h), pad = tile * 2, gem = hexRgb(colors.gem);
+    for (const c of G.carts.values()) {
+        const p = otherPos(c, now), [sx, sy] = screenPos(p.x, p.y, cam, cosr, sinr, ax, ay);
+        if (sx < -pad || sx > W + pad || sy < -pad || sy > H + pad) continue;
+        ART.cart(ctx, sx, sy, tile, c.a - cam.h, gem, drawCrystal, rngAt);
+    }
+}
+
+function pillText(str, x, y, color) {
+    const fs = Math.max(11, tile * 0.42);
+    ctx.font = `bold ${fs}px ${HUD.font}`;
+    const w = ctx.measureText(str).width + fs * 1.2, h = fs * 1.8;
+    rr(x - w / 2, y - h / 2, w, h, h / 2);
+    ctx.fillStyle = "rgba(4,12,12,0.85)"; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = color; ctx.stroke();
+    text(str, x, y + fs * 0.35, fs, color, "center", 0);
+}
+
+// While laying a track: the tapped spot, the straight line to it, and what it costs.
+function drawBuildPreview(cam, ax, ay, now) {
+    if (!buildMode) return;
+    const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h);
+    const q = buildMode.preview, t = q || buildMode.target;
+    if (!t) return;
+    const b = screenPos(t.x, t.y, cam, cosr, sinr, ax, ay);
+    if (q) {
+        const a = screenPos(q.from[0], q.from[1], cam, cosr, sinr, ax, ay);
+        const col = q.ok ? "rgba(62,240,122,0.95)" : "rgba(255,90,77,0.95)";
+        ctx.save();
+        ctx.setLineDash([10, 8]); ctx.lineWidth = 4; ctx.strokeStyle = col;
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+        ctx.restore();
+        if (q.new) {
+            ctx.save(); ctx.translate(b[0], b[1]); ctx.rotate(-cam.h);
+            ART.hub(ctx, 0, 0, tile, accent(G.me.hue), now, true);
+            ctx.restore();
+        }
+        pillText(q.ok ? `-${q.cost}  (tap again to build)` : q.why, b[0], b[1] - tile * 1.2, q.ok ? "#3ef07a" : "#ff6b5e");
+    } else {
+        ctx.save();
+        ctx.strokeStyle = HUD.amber; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(b[0], b[1], tile * 0.45, 0, TAU); ctx.stroke();
+        ctx.restore();
+    }
+}
+
 function draw() {
     requestAnimationFrame(draw);
     const dpr = window.devicePixelRatio || 1;
@@ -65,11 +141,14 @@ function draw() {
     drawWorld(cam, ax, ay, colors);
     const bp = screenPos(0, 0, cam, cosr, sinr, ax, ay);
     ART.baseRing(ctx, bp[0], bp[1], G.baseR * tile);
+    drawRail(cam, ax, ay, W, H, now);
     drawGems(cam, ax, ay, W, H, colors);
     ART.base(ctx, bp[0], bp[1], tile, now);
+    drawCarts(cam, ax, ay, W, H, now, colors);
     drawOthers(cam, ax, ay, W, H, now);
     drawRobot(ax, ay, tile, { player: accent(G.me.hue) }, now);
     drawRobotLabels(ax, ay, G.meta.get(G.me.num) || { name: G.me.name, chat: "", id: G.me.id }, now);
+    drawBuildPreview(cam, ax, ay, now);
 
     // Brief red vignette that fades after a wall bump.
     const flash = bumpGlow();
