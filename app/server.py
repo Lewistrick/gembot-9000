@@ -22,7 +22,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .connection import Connection
+from .connection import Connection, dump_tick
 from .game import MAX_PLAYERS, Game, today
 from .player import TICK
 from .store import Store
@@ -57,7 +57,7 @@ class Link:
         if len(self.pending) > _MAX_BACKLOG:
             self.slow, self.closing = True, True
         if tick is not None:
-            self.latest = _dump(tick)
+            self.latest = dump_tick(tick)
         self.wake.set()
 
     def finish(self) -> None:

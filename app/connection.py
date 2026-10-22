@@ -21,9 +21,10 @@ Messages, server -> client (``t`` is the type):
 """
 
 import base64
+import json
 import math
 
-from .game import MAX_PLAYERS, Game
+from .game import MAX_PLAYERS, Game, Row
 from .grid import BASE_RADIUS, CHUNK
 from .player import MAX_SPEED, TICK, Player
 
@@ -37,6 +38,16 @@ FORGET_MARGIN = 2  # chunks beyond the wanted range before the server says "drop
 def hue_for(num: int) -> int:
     """A well-spread accent hue (degrees) for the player with this number."""
     return int(num * 137.508) % 360
+
+
+def dump_tick(tick: dict) -> str:
+    """JSON for a tick message, splicing in the robots' pre-formatted row text."""
+    rows = tick.get("o")
+    if not rows or not isinstance(rows[0], Row):
+        return json.dumps(tick, separators=(",", ":"))
+    rest = {k: v for k, v in tick.items() if k != "o"}
+    head = json.dumps(rest, separators=(",", ":"))
+    return head[:-1] + ',"o":[' + ",".join(r.js for r in rows) + "]}"
 
 
 def _flag(msg: dict, key: str) -> bool:
@@ -56,6 +67,9 @@ class Connection:
         self.known: dict[int, int] = {}  # robot num -> meta_version already sent
         self.board_epoch = -1
         self.hub_cursor = -1  # -1: the full hub list has not been sent yet
+        self.phase = player.num % 2  # half the clients update robots on odd ticks
+        self._want: tuple[int, int, int, int] | None = None
+        self._starved = False  # chunks still owed (ran out of this tick's budget)
         player.notices.clear()
 
     # ------------------------------------------------------------------ #
@@ -166,25 +180,30 @@ class Connection:
         out: list[dict] = []
 
         # -- terrain ----------------------------------------------------- #
-        cx0, cx1, cy0, cy1 = self._chunk_range(CHUNK_MARGIN)
-        need = [
-            (cx, cy)
-            for cy in range(cy0, cy1 + 1)
-            for cx in range(cx0, cx1 + 1)
-            if (cx, cy) not in self.sent
-        ]
-        need.sort(
-            key=lambda k: (
-                (k[0] * CHUNK + CHUNK / 2 - p.x) ** 2
-                + (k[1] * CHUNK + CHUNK / 2 - p.y) ** 2
+        want = self._chunk_range(CHUNK_MARGIN)
+        if want != self._want or self._starved:  # only re-plan when we moved chunks
+            self._want = want
+            cx0, cx1, cy0, cy1 = want
+            need = [
+                (cx, cy)
+                for cy in range(cy0, cy1 + 1)
+                for cx in range(cx0, cx1 + 1)
+                if (cx, cy) not in self.sent
+            ]
+            need.sort(
+                key=lambda k: (
+                    (k[0] * CHUNK + CHUNK / 2 - p.x) ** 2
+                    + (k[1] * CHUNK + CHUNK / 2 - p.y) ** 2
+                )
             )
-        )
-        for key in need:
-            if chunk_budget[0] <= 0:
-                break
-            chunk_budget[0] -= 1
-            out.append(self._chunk_msg(*key))
-            self.sent.add(key)
+            self._starved = False
+            for key in need:
+                if chunk_budget[0] <= 0:
+                    self._starved = True
+                    break
+                chunk_budget[0] -= 1
+                out.append(self._chunk_msg(*key))
+                self.sent.add(key)
         if g.tick_count % 20 == 0 and self.sent:
             fx0, fx1, fy0, fy1 = self._chunk_range(CHUNK_MARGIN + FORGET_MARGIN * CHUNK)
             far = [
@@ -214,32 +233,33 @@ class Connection:
         if touched:
             out.append({"t": "hubs", "list": [self._hub_row(h) for h in touched]})
 
-        # -- robots in view ---------------------------------------------- #
+        # -- robots in view (on this client's update ticks only) ------------- #
         hw, hh = self.cols / 2 + NEAR_PAD, self.rows / 2 + NEAR_PAD
-        near = [
-            q
-            for q in g.players.values()
-            if q is not p
-            and q.in_world
-            and abs(q.x - p.x) <= hw
-            and abs(q.y - p.y) <= hh
-        ]
-        metas = []
-        for q in [p, *near]:
-            if self.known.get(q.num) != q.meta_version:
-                self.known[q.num] = q.meta_version
-                metas.append(
-                    {
-                        "n": q.num,
-                        "id": q.pid,
-                        "name": q.name,
-                        "chat": q.chat,
-                        "hue": hue_for(q.num),
-                        "crown": q.pid == g.crown_pid,
-                    }
-                )
-        if metas:
-            out.append({"t": "meta", "list": metas})
+        update = (g.tick_count + self.phase) % 2 == 0
+        near: list[Player] = []
+        if update:
+            px, py = p.x, p.y
+            near = [
+                q
+                for q in g.present
+                if q is not p and -hw <= q.x - px <= hw and -hh <= q.y - py <= hh
+            ]
+            metas = []
+            for q in [p, *near]:
+                if self.known.get(q.num) != q.meta_version:
+                    self.known[q.num] = q.meta_version
+                    metas.append(
+                        {
+                            "n": q.num,
+                            "id": q.pid,
+                            "name": q.name,
+                            "chat": q.chat,
+                            "hue": hue_for(q.num),
+                            "crown": q.pid == g.crown_pid,
+                        }
+                    )
+            if metas:
+                out.append({"t": "meta", "list": metas})
 
         # -- private notices and the board -------------------------------- #
         if p.notices:
@@ -273,17 +293,8 @@ class Connection:
             "b": round(p.bump, 2),
             "r": 1 if p.ride else 0,
         }
-        if g.tick_count % 2 == 0:  # other robots update at 10 Hz
-            tick["o"] = [
-                [
-                    q.num,
-                    round(q.x, 2),
-                    round(q.y, 2),
-                    round(q.heading, 3),
-                    1 if q.ride else 0,
-                ]
-                for q in near
-            ]
+        if update:  # other robots update at 10 Hz
+            tick["o"] = [g.row(q) for q in near]
             tick["k"] = [
                 [c.id, round(c.x, 2), round(c.y, 2), round(c.angle, 3)]
                 for c in g.carts

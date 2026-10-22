@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from datetime import time as dtime
+from typing import Self
 from zoneinfo import ZoneInfo
 
 from .grid import BASE_RADIUS, DEFAULT_STYLE, World
@@ -63,6 +64,23 @@ def clean_text(text: object, limit: int) -> str:
     return " ".join(_CONTROL_CHARS.sub(" ", text).split())[:limit].strip()
 
 
+class Row(tuple):
+    """``(num, x, y, heading, flags)`` for another robot, with its JSON text cached.
+
+    Built once per robot per tick and shared by every client that sees it, so the
+    rounding and formatting is not repeated for each of up to 100 viewers.
+    """
+
+    js: str
+
+    def __new__(cls, num: int, x: float, y: float, heading: float, flags: int) -> Self:
+        row = super().__new__(
+            cls, (num, round(x, 2), round(y, 2), round(heading, 3), flags)
+        )
+        row.js = f"[{row[0]},{row[1]},{row[2]},{row[3]},{flags}]"
+        return row
+
+
 @dataclass
 class Cart:
     """Gems shipped to the base on their own, riding the rails."""
@@ -110,6 +128,9 @@ class Game:
         self.rank: dict[str, int] = {}
         self._next_num = 1
         self._last_chat: dict[str, float] = {}
+        self._present: list[Player] | None = None
+        self._rows: dict[str, Row] = {}
+        self._rows_tick = -1
         self.rail = Network()
         self.carts: list[Cart] = []
         self._next_cart = 1
@@ -118,7 +139,25 @@ class Game:
     # Joining and leaving
     # ------------------------------------------------------------------ #
     def online_count(self) -> int:
-        return sum(1 for p in self.players.values() if p.in_world)
+        return len(self.present)
+
+    @property
+    def present(self) -> list[Player]:
+        """Players currently in the world (cached; membership changes reset it)."""
+        if self._present is None:
+            self._present = [p for p in self.players.values() if p.in_world]
+        return self._present
+
+    def row(self, q: Player) -> Row:
+        """The shared network row for robot ``q`` this tick."""
+        if self._rows_tick != self.tick_count:
+            self._rows, self._rows_tick = {}, self.tick_count
+        row = self._rows.get(q.pid)
+        if row is None:
+            row = self._rows[q.pid] = Row(
+                q.num, q.x, q.y, q.heading, 1 if q.ride else 0
+            )
+        return row
 
     def join(self, pid: str, name: str) -> Player | None:
         """Add (or resume) a player. Returns ``None`` when the server is full."""
@@ -142,6 +181,7 @@ class Game:
         player.in_world = True
         player.connected = True
         player.disconnected_at = None
+        self._present = None
         self.touch(pid)
         return player
 
@@ -162,6 +202,7 @@ class Game:
     def _remove(self, player: Player) -> None:
         player.ride = None  # a robot never stays "riding" while out of the world
         player.in_world = False
+        self._present = None
         player.connected = False
         player.release_controls()
         player.speed = 0.0

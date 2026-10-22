@@ -78,6 +78,7 @@ def test_mined_gems_reach_every_client_and_new_chunks_include_them() -> None:
 
 def test_meta_is_sent_once_then_again_only_when_chat_changes() -> None:
     game, ca, _ = make()
+    game.tick_count = ca.phase  # robots are refreshed on this client's update ticks
     first = of(ca.frame([0])[0], "meta")
     assert {m["name"] for m in first[0]["list"]} == {"Ann", "Bob"}
     assert not of(ca.frame([0])[0], "meta")
@@ -105,7 +106,7 @@ def test_others_are_sent_at_10hz_and_only_when_near() -> None:
     on_even = next(r for r in rows if r is not None)
     assert [r[0] for r in on_even] == [2]
     game.players["b"].place(500, 500)
-    game.tick_count = 2
+    game.tick_count = 3  # an update tick for this client again
     assert ca.frame([0])[1]["o"] == []
 
 
