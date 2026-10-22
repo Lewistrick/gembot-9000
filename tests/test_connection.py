@@ -162,3 +162,14 @@ def test_board_is_sent_once_per_epoch() -> None:
     game.tick_count += 40
     b = of(ca.frame([0])[0], "board")[0]
     assert b["online"] == 2 and "pal" in b
+
+
+def test_hostile_numbers_never_raise() -> None:
+    game, ca, _ = make()
+    huge = 10**400
+    for bad in (huge, float("inf"), float("nan"), -huge, "9" * 500, [], {}, None, True):
+        ca.handle({"action": "resize", "cols": bad, "rows": bad})
+        ca.handle({"action": "build_track", "x": bad, "y": bad, "confirm": True})
+        ca.handle({"action": "ride", "to": bad})
+    assert VIEW_MIN <= ca.cols <= VIEW_MAX + 1 and VIEW_MIN <= ca.rows <= VIEW_MAX + 1
+    assert len(game.rail.hubs) == 1  # nothing got built

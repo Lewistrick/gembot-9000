@@ -50,6 +50,17 @@ def dump_tick(tick: dict) -> str:
     return head[:-1] + ',"o":[' + ",".join(r.js for r in rows) + "]}"
 
 
+def _int(msg: dict, key: str, lo: int = -(10**7), hi: int = 10**7) -> int | None:
+    """An integer field clamped to ``[lo, hi]``; None if missing or not a finite number."""
+    try:
+        value = msg[key]
+        if isinstance(value, bool) or not isinstance(value, int | float | str):
+            return None
+        return max(lo, min(hi, int(value)))
+    except KeyError, TypeError, ValueError, OverflowError:
+        return None
+
+
 def _flag(msg: dict, key: str) -> bool:
     return msg.get(key) is True
 
@@ -94,9 +105,8 @@ class Connection:
         g, pid = self.game, self.player.pid
         action = msg.get("action")
         if action == "resize":
-            try:
-                cols, rows = int(msg["cols"]), int(msg["rows"])
-            except KeyError, TypeError, ValueError:
+            cols, rows = _int(msg, "cols"), _int(msg, "rows")
+            if cols is None or rows is None:
                 return
             self.cols = min(VIEW_MAX, max(VIEW_MIN, cols)) | 1
             self.rows = min(VIEW_MAX, max(VIEW_MIN, rows)) | 1
@@ -117,18 +127,16 @@ class Connection:
         elif action == "build_hub":
             g.build_hub(pid)
         elif action == "build_track":
-            try:
-                x, y = int(msg["x"]), int(msg["y"])
-            except KeyError, TypeError, ValueError:
+            x, y = _int(msg, "x"), _int(msg, "y")
+            if x is None or y is None:
                 return
             g.build_track(pid, x, y, _flag(msg, "confirm"))
         elif action == "netmap":
             g.net_map(pid)
         elif action == "ride":
-            try:
-                g.ride(pid, int(msg["to"]))
-            except KeyError, TypeError, ValueError:
-                return
+            to = _int(msg, "to")
+            if to is not None:
+                g.ride(pid, to)
         elif action == "send_cargo":
             g.send_cargo(pid)
 

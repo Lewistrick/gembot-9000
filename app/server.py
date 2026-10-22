@@ -296,7 +296,10 @@ async def ws(sock: WebSocket) -> None:
             except ValueError:
                 continue
             if isinstance(msg, dict):
-                conn.handle(msg)
+                try:
+                    conn.handle(msg)
+                except Exception:  # a bad message must not take the socket down
+                    log.exception("bad client message")
     except WebSocketDisconnect, RuntimeError, TimeoutError, ValueError:
         pass
     finally:
