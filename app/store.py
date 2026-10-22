@@ -79,6 +79,8 @@ class Store:
             rail = getattr(game, "rail", None)
             if rail is not None:
                 for h in rail.hubs.values():
+                    if h.id == 0:
+                        continue  # the base is built in
                     row = (h.x, h.y, h.builder, h.out)
                     if self._hubs_saved.get(h.id) != row:
                         hubs[h.id] = row

@@ -13,9 +13,11 @@ Messages, server -> client (``t`` is the type):
 * ``mined``    gem cells mined since the last message (everyone's)
 * ``meta``     name / chat / hue for robots that just came into view or changed
 * ``tick``     your pose, cargo and score; every other tick also nearby robots
+* ``hubs``     rail hubs (all of them on join, then any new or re-linked ones)
 * ``board``    top of the daily leaderboard, your rank, online count, palette
 * ``announce`` game-wide text; ``gain`` / ``delivered`` / ``warn`` / ``kicked``
-  are private notices
+  ``toll`` / ``rail`` (a message for a toast) / ``quote`` (build preview) /
+  ``net`` (the network map) are private notices
 """
 
 import base64
@@ -53,6 +55,7 @@ class Connection:
         self.ann_cursor = len(game.announcements)
         self.known: dict[int, int] = {}  # robot num -> meta_version already sent
         self.board_epoch = -1
+        self.hub_cursor = -1  # -1: the full hub list has not been sent yet
         player.notices.clear()
 
     # ------------------------------------------------------------------ #
@@ -97,6 +100,23 @@ class Connection:
             g.set_chat(pid, msg.get("text"))
         elif action == "quit":
             g.quit(pid)
+        elif action == "build_hub":
+            g.build_hub(pid)
+        elif action == "build_track":
+            try:
+                x, y = int(msg["x"]), int(msg["y"])
+            except KeyError, TypeError, ValueError:
+                return
+            g.build_track(pid, x, y, _flag(msg, "confirm"))
+        elif action == "netmap":
+            g.net_map(pid)
+        elif action == "ride":
+            try:
+                g.ride(pid, int(msg["to"]))
+            except KeyError, TypeError, ValueError:
+                return
+        elif action == "send_cargo":
+            g.send_cargo(pid)
 
     # ------------------------------------------------------------------ #
     def _chunk_range(self, margin: int) -> tuple[int, int, int, int]:
@@ -108,6 +128,18 @@ class Connection:
             math.floor((p.y - hh) / CHUNK),
             math.floor((p.y + hh) / CHUNK),
         )
+
+    def _hub_row(self, hid: int) -> list:
+        """``[id, x, y, builder_num, out]`` (out is -1 when the hub has no track)."""
+        h = self.game.rail.hubs[hid]
+        builder = self.game.players.get(h.builder or "")
+        return [
+            h.id,
+            h.x,
+            h.y,
+            builder.num if builder else 0,
+            -1 if h.out is None else h.out,
+        ]
 
     def _chunk_msg(self, cx: int, cy: int) -> dict:
         g = self.game
@@ -172,6 +204,16 @@ class Connection:
             out.append({"t": "announce", "text": g.announcements[self.ann_cursor][1]})
             self.ann_cursor += 1
 
+        # -- rail ------------------------------------------------------------ #
+        log = g.rail.log
+        if self.hub_cursor < 0:
+            touched = [h for h in g.rail.hubs if h != 0]
+        else:
+            touched = sorted(set(log[self.hub_cursor :]))
+        self.hub_cursor = len(log)
+        if touched:
+            out.append({"t": "hubs", "list": [self._hub_row(h) for h in touched]})
+
         # -- robots in view ---------------------------------------------- #
         hw, hh = self.cols / 2 + NEAR_PAD, self.rows / 2 + NEAR_PAD
         near = [
@@ -229,10 +271,22 @@ class Connection:
             "sc": p.score,
             "f": p.flip_remaining > 0.0,
             "b": round(p.bump, 2),
+            "r": 1 if p.ride else 0,
         }
         if g.tick_count % 2 == 0:  # other robots update at 10 Hz
             tick["o"] = [
-                [q.num, round(q.x, 2), round(q.y, 2), round(q.heading, 3), 0]
+                [
+                    q.num,
+                    round(q.x, 2),
+                    round(q.y, 2),
+                    round(q.heading, 3),
+                    1 if q.ride else 0,
+                ]
                 for q in near
+            ]
+            tick["k"] = [
+                [c.id, round(c.x, 2), round(c.y, 2), round(c.angle, 3)]
+                for c in g.carts
+                if abs(c.x - p.x) <= hw and abs(c.y - p.y) <= hh
             ]
         return out, tick

@@ -36,6 +36,14 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 
 
 @dataclass
+class Ride:
+    """A robot riding the rails: the points still to visit, in order."""
+
+    pts: list[tuple[float, float]]
+    i: int = 0
+
+
+@dataclass
 class Player:
     """One robot in the world. Pure state plus movement; no networking."""
 
@@ -68,6 +76,7 @@ class Player:
     disconnected_at: float | None = None
     warned: bool = False  # idle warning already sent
     notices: list[dict] = field(default_factory=list)  # private messages to send
+    ride: Ride | None = None  # set while riding the rails (no steering, no mining)
 
     @property
     def score(self) -> int:

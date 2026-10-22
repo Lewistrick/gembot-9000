@@ -136,6 +136,7 @@ class Hub:
 
     def shutdown_save(self) -> None:
         try:
+            self.game.settle_carts()
             self.store.flush(self.game)
         except Exception:
             log.exception("final save failed")
@@ -149,6 +150,7 @@ class Hub:
         game halfway through. Everyone's cargo is lost: it was never delivered.
         """
         old = self.game
+        old.settle_carts()
         old.refresh_board()
         winner = old.board[0] if old.board and old.board[0].score > 0 else None
         self.store.flush(old)

@@ -11,12 +11,14 @@ import random
 import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from .grid import BASE_RADIUS, DEFAULT_STYLE, World
-from .player import Player
+from .player import TICK, Player, Ride
+from .rail import CART_SPEED, RIDE_SPEED, Hub, Network, Quote, advance
 
 MAX_PLAYERS = 100
 NAME_MAX = 16
@@ -61,6 +63,20 @@ def clean_text(text: object, limit: int) -> str:
     return " ".join(_CONTROL_CHARS.sub(" ", text).split())[:limit].strip()
 
 
+@dataclass
+class Cart:
+    """Gems shipped to the base on their own, riding the rails."""
+
+    id: int
+    owner: str
+    value: int
+    x: float
+    y: float
+    pts: list[tuple[float, float]]
+    i: int = 0
+    angle: float = 0.0  # direction of travel, atan2(dy, dx)
+
+
 class Game:
     """The world and all players for a single day."""
 
@@ -94,6 +110,9 @@ class Game:
         self.rank: dict[str, int] = {}
         self._next_num = 1
         self._last_chat: dict[str, float] = {}
+        self.rail = Network()
+        self.carts: list[Cart] = []
+        self._next_cart = 1
 
     # ------------------------------------------------------------------ #
     # Joining and leaving
@@ -141,6 +160,7 @@ class Game:
             self._remove(player)
 
     def _remove(self, player: Player) -> None:
+        player.ride = None  # a robot never stays "riding" while out of the world
         player.in_world = False
         player.connected = False
         player.release_controls()
@@ -185,13 +205,15 @@ class Game:
     def control(self, pid: str, up: bool, down: bool, left: bool, right: bool) -> None:
         player = self.players.get(pid)
         if player is not None and player.in_world:
-            player.set_controls(up, down, left, right)
+            if player.ride is None:
+                player.set_controls(up, down, left, right)
             self.touch(pid)
 
     def flip(self, pid: str) -> None:
         player = self.players.get(pid)
         if player is not None and player.in_world:
-            player.request_flip()
+            if player.ride is None:
+                player.request_flip()
             self.touch(pid)
 
     def set_chat(self, pid: str, text: object) -> bool:
@@ -237,9 +259,13 @@ class Game:
                     player.notices.append(
                         {"t": "warn", "left": int(IDLE_KICK - idle), "why": "idle"}
                     )
-            player.step(self.world)
-            self._pickup(player)
+            if player.ride is not None:
+                self._ride_step(player)
+            else:
+                player.step(self.world)
+                self._pickup(player)
             self._deliver(player)
+        self._move_carts()
         if self.tick_count % BOARD_EVERY == 1:
             self.refresh_board()
             self._clock_events()
@@ -265,6 +291,220 @@ class Game:
             player.delivered += player.cargo
             player.notices.append({"t": "delivered", "v": player.cargo})
             player.cargo = 0
+
+    # ------------------------------------------------------------------ #
+    # Rail: hubs, tracks, riding, tolls and cargo carts
+    # ------------------------------------------------------------------ #
+    def _rail_player(self, pid: str) -> Player | None:
+        """The player if they can act on the rail right now (present, not riding)."""
+        player = self.players.get(pid)
+        if player is None or not player.in_world:
+            return None
+        self.touch(pid)
+        return None if player.ride is not None else player
+
+    def _say(self, player: Player, ok: bool, text: str) -> None:
+        player.notices.append({"t": "rail", "ok": ok, "msg": text})
+
+    def hub_under(self, player: Player) -> Hub | None:
+        """The hub the player is parked on (slow enough to count as stopped)."""
+        if player.speed > 2.5 or player.ride is not None:
+            return None
+        return self.rail.nearest(player.x, player.y)
+
+    @staticmethod
+    def _quote_msg(q: Quote, origin: Hub) -> dict:
+        return {
+            "t": "quote",
+            "ok": q.ok,
+            "why": q.why,
+            "cost": q.cost,
+            "x": q.x,
+            "y": q.y,
+            "from": [origin.x, origin.y],
+            "new": q.kind == "track",
+            "len": round(q.length, 1),
+        }
+
+    def build_hub(self, pid: str) -> None:
+        """Build a standalone hub where the player is standing."""
+        player = self._rail_player(pid)
+        if player is None:
+            return
+        q = self.rail.quote_hub(
+            self.world, round(player.x), round(player.y), player.score
+        )
+        if not q.ok:
+            return self._say(player, False, q.why)
+        player.spent += q.cost
+        self.rail.apply(q, pid)
+        self._say(player, True, f"Hub built (-{q.cost})")
+
+    def build_track(self, pid: str, x: int, y: int, confirm: bool) -> None:
+        """Lay a track from the hub under the player to ``(x, y)`` (preview, then confirm)."""
+        player = self._rail_player(pid)
+        if player is None:
+            return
+        origin = self.hub_under(player)
+        if origin is None:
+            return self._say(player, False, "Stop on a hub to build a track from it.")
+        q = self.rail.quote_track(self.world, origin.id, x, y, player.score)
+        if not confirm:
+            player.notices.append(self._quote_msg(q, origin))
+        elif not q.ok:
+            self._say(player, False, q.why)
+        else:
+            player.spent += q.cost
+            self.rail.apply(q, pid)
+            self._say(player, True, f"Built (-{q.cost})")
+            player.notices.append({"t": "built"})
+
+    def _pay_tolls(self, payer: Player, builders: list[str], from_cargo: bool) -> None:
+        """Move one point per toll from the payer's cargo to each hub's builder."""
+        if from_cargo:
+            payer.cargo -= len(builders)
+        owed: dict[str, int] = {}
+        for b in builders:
+            owed[b] = owed.get(b, 0) + 1
+        for b, n in owed.items():
+            builder = self.players.get(b)
+            if builder is not None:
+                builder.toll_income += n
+                if builder.in_world:
+                    builder.notices.append({"t": "toll", "v": n, "from": payer.name})
+
+    def net_map(self, pid: str) -> None:
+        """Send the network the player is parked on, with a toll quote per hub."""
+        player = self._rail_player(pid)
+        if player is None:
+            return
+        here = self.hub_under(player)
+        if here is None:
+            return self._say(player, False, "Stop on a hub to see its network.")
+        rows = []
+        for hid in self.rail.component(here.id):
+            hub = self.rail.hubs[hid]
+            route = self.rail.route(here.id, hid) or [hid]
+            owner = self.players.get(hub.builder or "")
+            rows.append(
+                {
+                    "id": hid,
+                    "x": hub.x,
+                    "y": hub.y,
+                    "out": hub.out,
+                    "by": owner.name if owner else ("BASE" if hid == 0 else "?"),
+                    "bn": owner.num if owner else 0,
+                    "toll": len(self.rail.toll_builders(route, player.pid)),
+                }
+            )
+        ship = None
+        to_base = self.rail.route(here.id, 0)
+        if to_base is not None and here.id != 0:
+            ship = {"toll": len(self.rail.toll_builders(to_base, player.pid))}
+        player.notices.append(
+            {
+                "t": "net",
+                "at": here.id,
+                "hubs": rows,
+                "cargo": player.cargo,
+                "ship": ship,
+            }
+        )
+
+    def ride(self, pid: str, to: int) -> None:
+        """Ride the rails to another hub of the same network (tolls come out of cargo)."""
+        player = self._rail_player(pid)
+        if player is None:
+            return
+        here = self.hub_under(player)
+        if here is None or to not in self.rail.hubs or to == here.id:
+            return self._say(player, False, "Stop on a hub, then pick another one.")
+        route = self.rail.route(here.id, to)
+        if route is None:
+            return self._say(player, False, "That hub is not on this network.")
+        tolls = self.rail.toll_builders(route, pid)
+        if player.cargo < len(tolls):
+            return self._say(
+                player,
+                False,
+                f"No cargo, no ride: the tolls are {len(tolls)} and you carry {player.cargo}.",
+            )
+        self._pay_tolls(player, tolls, from_cargo=True)
+        player.place(float(here.x), float(here.y))
+        player.ride = Ride(self.rail.points(route)[1:])
+        player.speed = RIDE_SPEED
+        if tolls:
+            self._say(player, True, f"Riding. Tolls paid: {len(tolls)}")
+
+    def send_cargo(self, pid: str) -> None:
+        """Ship the whole cargo to the base on its own cart (tolls come out of it)."""
+        player = self._rail_player(pid)
+        if player is None:
+            return
+        here = self.hub_under(player)
+        if here is None or here.id == 0:
+            return self._say(
+                player, False, "Stop on a hub (not the base) to ship cargo."
+            )
+        route = self.rail.route(here.id, 0)
+        if route is None:
+            return self._say(player, False, "This hub is not linked to the base.")
+        if player.cargo <= 0:
+            return self._say(player, False, "You carry nothing to ship.")
+        tolls = self.rail.toll_builders(route, pid)
+        if player.cargo <= len(tolls):
+            return self._say(
+                player, False, f"The tolls ({len(tolls)}) would eat the whole shipment."
+            )
+        value = player.cargo - len(tolls)
+        self._pay_tolls(player, tolls, from_cargo=False)
+        player.cargo = 0
+        pts = self.rail.points(route)
+        self.carts.append(
+            Cart(self._next_cart, pid, value, pts[0][0], pts[0][1], pts[1:])
+        )
+        self._next_cart += 1
+        self._say(
+            player, True, f"Shipment sent: {value} to arrive (tolls {len(tolls)})"
+        )
+
+    def _ride_step(self, player: Player) -> None:
+        ride = player.ride
+        assert ride is not None
+        x, y, ride.i = advance(player.x, player.y, ride.pts, ride.i, RIDE_SPEED * TICK)
+        dx, dy = x - player.x, y - player.y
+        if dx or dy:  # swing the heading toward the direction of travel, smoothly
+            want = math.atan2(dx, -dy)
+            diff = (want - player.heading + math.pi) % math.tau - math.pi
+            player.heading += max(-0.3, min(0.3, diff))
+        player.x, player.y = x, y
+        if ride.i >= len(ride.pts):
+            player.ride = None
+            player.speed = 0.0
+
+    def _move_carts(self) -> None:
+        for cart in self.carts[:]:
+            nx, ny, cart.i = advance(
+                cart.x, cart.y, cart.pts, cart.i, CART_SPEED * TICK
+            )
+            if nx != cart.x or ny != cart.y:
+                cart.angle = math.atan2(ny - cart.y, nx - cart.x)
+            cart.x, cart.y = nx, ny
+            if cart.i >= len(cart.pts):
+                self._land(cart)
+
+    def _land(self, cart: Cart) -> None:
+        self.carts.remove(cart)
+        owner = self.players.get(cart.owner)
+        if owner is not None:
+            owner.delivered += cart.value
+            if owner.in_world:
+                owner.notices.append({"t": "delivered", "v": cart.value})
+
+    def settle_carts(self) -> None:
+        """Credit every shipment still on the rails (the day or server is ending)."""
+        for cart in self.carts[:]:
+            self._land(cart)
 
     # ------------------------------------------------------------------ #
     # Time of day: rush hour and the end-of-day warning

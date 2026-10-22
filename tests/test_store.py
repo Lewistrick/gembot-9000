@@ -1,18 +1,20 @@
 """Persistence and the end of the day: save/restore, winners, rollover, rush hour."""
 
 import random
+from collections.abc import Iterator
 from datetime import datetime
+from typing import cast
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.game import Game
-from app.server import Hub
+from app.server import Hub, Link
 from app.store import Store
 
 
 @pytest.fixture
-def store(tmp_path) -> Store:
+def store(tmp_path) -> Iterator[Store]:
     s = Store(str(tmp_path / "game.db"))
     yield s
     s.close()
@@ -42,7 +44,8 @@ def test_round_trip_restores_players_mined_gems_and_names(
     assert (p.name, p.num, p.score, p.cargo, p.chat) == ("Ann", 1, 99, 30, "hi")
     assert (p.x, p.y) == (7, -3) and not p.in_world
     assert (10, 11) in g2.mined and g2.mined_log == [(10, 11)]
-    assert g2.join("c", "Ann").name == "Ann#2"  # the name is still reserved
+    intruder = g2.join("c", "Ann")
+    assert intruder is not None and intruder.name == "Ann#2"  # still reserved
     assert g2.join("a", "Ann") is p  # the owner resumes their record
     assert g2.rank["a"] == 1  # the board was rebuilt on load
     again.close()
@@ -127,7 +130,7 @@ def test_rollover_crowns_the_winner_and_starts_a_fresh_world(tmp_path) -> None:
     assert a and b
     a.delivered, b.delivered, b.cargo = 30, 75, 999
     link = FakeLink()
-    hub.links["a"] = link  # type: ignore[assignment]
+    hub.links["a"] = cast(Link, link)
 
     day["now"] = "2026-10-23"
     hub.rollover("2026-10-23")
