@@ -1,7 +1,7 @@
 [project]
 name = "gembot-9000"
-version = "0.2.0"
-description = "Infinite procedurally-generated mining grid"
+version = "0.3.0"
+description = "A shared daily mine for up to 100 mining robots"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.115",

@@ -42,10 +42,7 @@ def check(seed: str, style: str, span: int = 96) -> None:
     world = World(seed, style)
     lo, hi = -span, span
     floor = {
-        (x, y)
-        for y in range(lo, hi)
-        for x in range(lo, hi)
-        if world.is_floor(x, y)
+        (x, y) for y in range(lo, hi) for x in range(lo, hi) if world.is_floor(x, y)
     }
 
     # Rock-borders-corridor, where the style promises it.
