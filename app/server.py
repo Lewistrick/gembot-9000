@@ -15,18 +15,17 @@ import logging
 import os
 import time
 from collections import deque
-from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .connection import Connection
-from .game import MAX_PLAYERS, Game
+from .game import MAX_PLAYERS, Game, today
 from .player import TICK
+from .store import Store
 
 log = logging.getLogger("gembot")
 
@@ -35,12 +34,6 @@ _CHUNK_BUDGET = 12  # new chunks generated per tick across all players (~2 ms ea
 _MAX_BACKLOG = 400  # queued reliable messages before a slow client is dropped
 _MAX_MSG_LEN = 2048  # bytes; client messages are tiny
 _MAX_MSGS_PER_SEC = 120  # per-socket flood limit
-
-
-def today() -> str:
-    """Today's date (in ``GEMBOT_TZ``, default UTC) as an ISO string: the world seed."""
-    tz = ZoneInfo(os.environ.get("GEMBOT_TZ") or "UTC")
-    return datetime.now(UTC).astimezone(tz).date().isoformat()
 
 
 def _dump(obj: object) -> str:
@@ -91,12 +84,27 @@ class Link:
 
 
 class Hub:
-    """Owns the game, the live links and the global tick loop."""
+    """Owns the game, the live links, persistence and the global tick loop."""
 
-    def __init__(self) -> None:
-        self.game = Game(today())
+    def __init__(
+        self,
+        db_path: str | None = None,
+        day_fn: Callable[[], str] = today,
+    ) -> None:
+        path = db_path or os.environ.get("GEMBOT_DB") or "data/gembot.db"
+        if path != ":memory:":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.day_fn = day_fn
+        self.store = Store(path)
+        day = day_fn()
+        self.store.close_out_past_days(day)
+        self.store.prune(day)
+        self.game = Game(day, crown_pid=self.store.last_winner_before(day))
+        self.store.load_into(self.game)
         self.links: dict[str, Link] = {}
         self.tick_ms: deque[float] = deque(maxlen=400)
+        self._saving = False
+        self._tasks: set[asyncio.Task] = set()
 
     def step(self) -> None:
         """One game tick plus one outgoing frame per connection."""
@@ -112,12 +120,67 @@ class Hub:
             if not link.conn.player.in_world:
                 link.finish()
 
+    # -- persistence ---------------------------------------------------- #
+    async def save(self) -> None:
+        """Snapshot in the loop, write in a worker thread (skipped if one is running)."""
+        if self._saving:
+            return
+        self._saving = True
+        try:
+            snap = self.store.snapshot(self.game)
+            await asyncio.to_thread(self.store.write, snap)
+        except Exception:
+            log.exception("save failed")
+        finally:
+            self._saving = False
+
+    def shutdown_save(self) -> None:
+        try:
+            self.store.flush(self.game)
+        except Exception:
+            log.exception("final save failed")
+        self.store.close()
+
+    # -- the day ends ----------------------------------------------------- #
+    def rollover(self, new_day: str) -> None:
+        """Close out the day: crown the winner, start a fresh world, send everyone back.
+
+        Runs synchronously inside the loop so no request can slip into the old
+        game halfway through. Everyone's cargo is lost: it was never delivered.
+        """
+        old = self.game
+        old.refresh_board()
+        winner = old.board[0] if old.board and old.board[0].score > 0 else None
+        self.store.flush(old)
+        if winner is not None:
+            self.store.record_winner(old.day, winner.pid, winner.name, winner.score)
+        self.store.reset_bookkeeping()
+        self.store.prune(new_day)
+        crown = winner.pid if winner else self.store.last_winner_before(new_day)
+        self.game = Game(new_day, crown_pid=crown)
+        note = {
+            "t": "newday",
+            "day": new_day,
+            "winner": {"name": winner.name, "score": winner.score} if winner else None,
+        }
+        links, self.links = self.links, {}
+        for link in links.values():
+            link.push([note], None)
+            link.finish()
+
     async def run(self) -> None:
         next_t = time.perf_counter()
         while True:
             t0 = time.perf_counter()
             try:
                 self.step()
+                tick = self.game.tick_count
+                if tick % 20 == 0 and self.day_fn() != self.game.day:
+                    self.rollover(self.day_fn())
+                elif tick % 100 == 0:
+                    task = asyncio.create_task(self.save())
+                    self._tasks.add(task)
+                    task.add_done_callback(self._tasks.discard)
             except Exception:  # one bad tick must never kill the game
                 log.exception("tick failed")
             now = time.perf_counter()
@@ -149,6 +212,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+        hub.shutdown_save()
 
 
 app = FastAPI(title="GemBot 9000", lifespan=lifespan)
@@ -169,6 +233,7 @@ async def status() -> dict:
         "online": game.online_count(),
         "cap": MAX_PLAYERS,
         "top": game.board_rows(5),
+        "winners": hub.store.winners(5),
         "perf": hub.perf(),
     }
 

@@ -6,6 +6,8 @@
 
 const { spawn } = require("child_process");
 const path = require("path");
+const os = require("os");
+const fs = require("fs");
 const { chromium } = require("playwright");
 
 const PORT = 8765;
@@ -24,7 +26,7 @@ async function waitFor(page, fn, what, timeout = 8000) {
 
 (async () => {
     const server = spawn("uv", ["run", "uvicorn", "app.server:app", "--port", String(PORT)],
-        { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
+        { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", GEMBOT_DB: path.join(fs.mkdtempSync(path.join(os.tmpdir(), "gembot-smoke-")), "smoke.db") } });
     let serverLog = "";
     server.stderr.on("data", (d) => (serverLog += d));
     for (let i = 0; i < 60; i++) {

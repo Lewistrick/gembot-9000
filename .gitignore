@@ -17,3 +17,6 @@ venv/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Saved game data
+data/

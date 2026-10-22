@@ -222,6 +222,32 @@ function drawIconButton(cx, cy, r, kind, on) {
     }
 }
 
+function fmtLeft(s) {
+    s = Math.max(0, Math.floor(s));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const p2 = (n) => String(n).padStart(2, "0");
+    return h > 0 ? `${h}h ${p2(m)}m` : `${m}m ${p2(sec)}s`;
+}
+
+// Small pill under the compass: time until midnight, and the rush-hour multiplier.
+function drawDayClock(W, y) {
+    if (!G.leftAt) return 0;
+    const left = G.left - (performance.now() - G.leftAt) / 1000;
+    const rush = G.mult > 1, fs = Math.max(11, Math.min(W * 0.03, 16));
+    const label = rush ? `RUSH HOUR x${G.mult}  ${fmtLeft(left)}` : `DAY ENDS IN ${fmtLeft(left)}`;
+    const color = rush ? HUD.amber : HUD.dim;
+    ctx.font = `bold ${fs}px ${HUD.font}`;
+    const w = ctx.measureText(label).width + fs * 1.4, h = fs * 1.7;
+    const pulse = rush ? 0.75 + 0.25 * Math.sin(performance.now() / 300) : 1;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    rr(W / 2 - w / 2, y, w, h, h / 2); ctx.fillStyle = "rgba(4,12,12,0.6)"; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = rush ? HUD.amber : "rgba(79,242,200,0.35)"; ctx.stroke();
+    text(label, W / 2, y + h * 0.7, fs, color, "center", rush ? 6 : 0);
+    ctx.restore();
+    return h + 6;
+}
+
 function drawToasts(W, topY) {
     const now = performance.now();
     G.toasts = G.toasts.filter((t) => now - t.t0 < t.dur);
@@ -278,7 +304,8 @@ function drawHUD(cam, W, H) {
     drawIconButton(fbx + gap, fby + (fbR - sbR), sbR, "players", false);
     hudHit.players = { x: fbx + gap - sbR, y: fby + (fbR - sbR) - sbR, w: 2 * sbR, h: 2 * sbR };
 
-    drawToasts(W, M + topH + M);
+    const clockH = drawDayClock(W, M + topH + M * 0.6);
+    drawToasts(W, M + topH + M * 0.6 + clockH + 4);
     if (G.idleUntil > performance.now()) {
         drawBanner(W, H, `STILL THERE?  MOVE WITHIN ${Math.ceil((G.idleUntil - performance.now()) / 1000)}s`, "#ff5a4d");
     } else if (!G.connected && wantPlaying) {

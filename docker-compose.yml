@@ -3,14 +3,19 @@ services:
     build: .
     ports:
       - "8004:8000"
-    # Runs the image's stable CMD (no auto-reload) so the server never restarts
-    # under you mid-game — a restart drops the WebSocket and would reset your run.
+    environment:
+      # Day boundary (rush hour, midnight rollover). Any IANA zone, e.g. Europe/Amsterdam.
+      GEMBOT_TZ: UTC
+    volumes:
+      # Leaderboard, mined gems, players and rail survive restarts.
+      - ./data:/app/data
+    # Runs the image's stable CMD (no auto-reload). A restart drops every player's
+    # socket; they reconnect on their own and resume where they were.
     #
-    # For development with live code reload, uncomment the two blocks below.
-    # Note: on Windows/macOS bind mounts, the file watcher can fire spurious
-    # reloads, which will interrupt gameplay.
-    # volumes:
+    # For development with live code reload, add this to `volumes` above:
     #   - ./app:/app/app:ro
+    # and uncomment the command below. Note: on Windows/macOS bind mounts, the
+    # file watcher can fire spurious reloads, which will interrupt gameplay.
     # command: >
     #   uv run uvicorn app.server:app
-    #   --host 0.0.0.0 --port 8000 --reload
+    #   --host 0.0.0.0 --port 8000 --ws-max-size 65536 --reload

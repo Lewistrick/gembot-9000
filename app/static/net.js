@@ -19,6 +19,7 @@ const G = {
     x: 0, y: 0, h: 0, speed: 0,
     cargo: 0, score: 0, flipping: false, bump: 0,
     rank: null, online: 0, top: [], mult: 1,
+    left: 0, leftAt: 0,        // seconds until midnight, as of performance.now() == leftAt
     others: new Map(),         // num -> { from, to, t0 } (interpolated positions)
     meta: new Map(),           // num -> { id, name, chat, hue }
     toasts: [],                // { text, color, t0, dur }
@@ -167,10 +168,17 @@ const HANDLERS = {
     },
     board(m) {
         G.top = m.top; G.rank = m.you.rank; G.online = m.online; G.mult = m.mult;
+        G.left = m.left; G.leftAt = performance.now();
         G.pal = Object.assign({}, m.pal, { player: "#e53935" });
         if (typeof refreshPlayersPanel === "function") refreshPlayersPanel();
     },
     announce(m) { toast(m.text, HUD.amber, 5000); },
+    newday(m) {
+        // The server closes the socket next; onclose reconnects us into the new day.
+        resetClientWorld();
+        toast(m.winner ? `NEW DAY! Yesterday's winner: ${m.winner.name} (${m.winner.score})`
+            : "NEW DAY! A fresh mine awaits.", HUD.amber, 9000);
+    },
     gain(m) { toast(`+${m.v}${m.mega ? "  MEGA GEM!" : ""}`, m.mega ? HUD.amber : HUD.neon, m.mega ? 4500 : 1800); },
     delivered(m) { toast(`BANKED +${m.v}`, "#3ef07a", 3000); },
     warn(m) { G.idleUntil = performance.now() + m.left * 1000; },

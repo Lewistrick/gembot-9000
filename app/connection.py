@@ -193,6 +193,7 @@ class Connection:
                         "name": q.name,
                         "chat": q.chat,
                         "hue": hue_for(q.num),
+                        "crown": q.pid == g.crown_pid,
                     }
                 )
         if metas:
@@ -213,6 +214,7 @@ class Connection:
                     "online": g.online_count(),
                     "pal": g.world.palette(math.hypot(p.x, p.y)),
                     "mult": g.multiplier,
+                    "left": g.day_left,
                 }
             )
 

@@ -84,7 +84,14 @@ def test_meta_is_sent_once_then_again_only_when_chat_changes() -> None:
     game.set_chat("b", "hello")
     again = of(ca.frame([0])[0], "meta")
     assert again[0]["list"] == [
-        {"n": 2, "id": "b", "name": "Bob", "chat": "hello", "hue": hue_for(2)}
+        {
+            "n": 2,
+            "id": "b",
+            "name": "Bob",
+            "chat": "hello",
+            "hue": hue_for(2),
+            "crown": False,
+        }
     ]
 
 

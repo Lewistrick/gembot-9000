@@ -6,10 +6,14 @@ connection layer (``connection.py``) turns the state into network messages.
 """
 
 import math
+import os
 import random
 import re
 import time
 from collections.abc import Callable
+from datetime import datetime, timedelta
+from datetime import time as dtime
+from zoneinfo import ZoneInfo
 
 from .grid import BASE_RADIUS, DEFAULT_STYLE, World
 from .player import Player
@@ -22,6 +26,9 @@ IDLE_WARN = 9 * 60.0  # idle seconds before the "still there?" warning
 IDLE_KICK = 10 * 60.0  # idle seconds before the player is removed
 DISCONNECT_GRACE = 15.0  # seconds a dropped robot lingers before leaving the world
 BOARD_EVERY = 40  # ticks between leaderboard refreshes (2 s at 20 Hz)
+RUSH_START = 23 * 60  # minute of the day when gems become worth double
+FINAL_WARN = 23 * 60 + 50  # minute of the day for the "deliver your cargo" warning
+RUSH_MULTIPLIER = 2
 SPAWN_RING = 8.0  # players spawn within this radius of the origin
 
 # Control, format and bidi/zero-width code point ranges removed from names and chat.
@@ -35,6 +42,16 @@ _STRIP_RANGES = (
 _CONTROL_CHARS = re.compile(
     "[" + "".join(f"{chr(a)}-{chr(b)}" for a, b in _STRIP_RANGES) + "]"
 )
+
+
+def local_now() -> datetime:
+    """The current time in the game's time zone (``GEMBOT_TZ``, default UTC)."""
+    return datetime.now(ZoneInfo(os.environ.get("GEMBOT_TZ") or "UTC"))
+
+
+def today() -> str:
+    """Today's date as an ISO string: the world seed and the name of the day."""
+    return local_now().date().isoformat()
 
 
 def clean_text(text: object, limit: int) -> str:
@@ -54,8 +71,15 @@ class Game:
         clock: Callable[[], float] = time.monotonic,
         rng: random.Random | None = None,
         style: str = DEFAULT_STYLE,
+        wall: Callable[[], datetime] = local_now,
+        crown_pid: str | None = None,
     ) -> None:
         self.day = day
+        self.wall = wall
+        self.crown_pid = crown_pid  # yesterday's winner wears the crown
+        self.rush = False
+        self._final_warned = False
+        self.day_left = 0  # seconds until midnight, refreshed with the board
         self.world = World(day, style)
         self.clock = clock
         self.rng = rng or random.Random()
@@ -217,7 +241,8 @@ class Game:
             self._pickup(player)
             self._deliver(player)
         if self.tick_count % BOARD_EVERY == 1:
-            self._refresh_board()
+            self.refresh_board()
+            self._clock_events()
 
     def _pickup(self, player: Player) -> None:
         cell = (round(player.x), round(player.y))
@@ -242,9 +267,53 @@ class Game:
             player.cargo = 0
 
     # ------------------------------------------------------------------ #
+    # Time of day: rush hour and the end-of-day warning
+    # ------------------------------------------------------------------ #
+    def seconds_left(self) -> float:
+        now = self.wall()
+        midnight = datetime.combine(
+            now.date() + timedelta(days=1), dtime.min, tzinfo=now.tzinfo
+        )
+        return max(0.0, (midnight - now).total_seconds())
+
+    def _clock_events(self) -> None:
+        now = self.wall()
+        minute = now.hour * 60 + now.minute
+        self.day_left = int(self.seconds_left())
+        if minute >= RUSH_START and not self.rush:
+            self.rush = True
+            self.multiplier = RUSH_MULTIPLIER
+            self.announce("RUSH HOUR! Every gem is worth double until midnight.")
+        if minute >= FINAL_WARN and not self._final_warned:
+            self._final_warned = True
+            self.announce(
+                "10 minutes left! Deliver your cargo, it is lost at midnight."
+            )
+
+    # ------------------------------------------------------------------ #
+    # Restoring saved state (see store.py)
+    # ------------------------------------------------------------------ #
+    def restore_player(self, rec: dict) -> None:
+        """Re-create a saved player. They are out of the world until they rejoin."""
+        player = Player(pid=rec["pid"], num=rec["num"], name=rec["name"])
+        player.x, player.y = rec["x"], rec["y"]
+        player.delivered, player.spent = rec["delivered"], rec["spent"]
+        player.toll_income, player.cargo = rec["toll_income"], rec["cargo"]
+        player.chat = rec["chat"]
+        self.players[player.pid] = player
+        self.names[player.name.lower()] = player.pid
+        self._next_num = max(self._next_num, player.num + 1)
+
+    def restore_mined(self, cells: list[tuple[int, int]]) -> None:
+        for cell in cells:
+            if cell not in self.mined:
+                self.mined.add(cell)
+                self.mined_log.append(cell)
+
+    # ------------------------------------------------------------------ #
     # Leaderboard
     # ------------------------------------------------------------------ #
-    def _refresh_board(self) -> None:
+    def refresh_board(self) -> None:
         ranked = [p for p in self.players.values() if p.score > 0 or p.in_world]
         ranked.sort(key=lambda p: (-p.score, p.num))
         self.board = ranked

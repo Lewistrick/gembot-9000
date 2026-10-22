@@ -136,6 +136,16 @@ async function refreshMenuStatus() {
             list.append(li);
         });
         if (!s.top.length) { const li = document.createElement("li"); li.textContent = "No scores yet today"; list.append(li); }
+        const wins = $("menuWinners");
+        wins.replaceChildren();
+        for (const w of s.winners || []) {
+            const li = document.createElement("li");
+            const a = document.createElement("span"); a.textContent = `\u265B ${w.name}`;
+            const b = document.createElement("span"); b.textContent = `${w.day}  ${w.score}`;
+            li.append(a, b);
+            wins.append(li);
+        }
+        $("winnersField").classList.toggle("hidden", !(s.winners || []).length);
     } catch (e) { /* server unreachable: leave the last values */ }
 }
 setInterval(refreshMenuStatus, 4000);
