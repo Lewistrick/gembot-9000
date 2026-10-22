@@ -62,6 +62,9 @@ DEFAULT_STYLE: str = "dungeon"
 _SPAWN_RADIUS: int = 10
 """Tiles within this Euclidean radius of the origin are always floor (spawn area)."""
 
+BASE_RADIUS: int = _SPAWN_RADIUS
+"""The base: gems carried into this disk around the origin are delivered."""
+
 _HUE_RATE: float = 0.0005
 """Hue turns (0..1) per tile of distance from the origin — a very slow colour drift."""
 
