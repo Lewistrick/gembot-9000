@@ -13,4 +13,4 @@ RUN uv sync --no-dev
 COPY app ./app
 
 EXPOSE 8000
-CMD ["uv", "run", "uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000", "--ws-max-size", "65536"]

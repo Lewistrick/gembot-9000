@@ -273,3 +273,190 @@ canvas {
     text-shadow: 0 0 12px rgba(255, 207, 77, 0.7);
 }
 
+
+/* ---- Multiplayer additions ---- */
+.input {
+    width: 100%;
+    font: inherit;
+    font-size: 16px;               /* >=16px keeps mobile browsers from zooming in */
+    font-weight: 700;
+    color: var(--neon);
+    background: rgba(79, 242, 200, 0.06);
+    border: 2px solid var(--neon);
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+    outline: none;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.input::placeholder {
+    color: #4d6d66;
+}
+
+.input:focus {
+    box-shadow: 0 0 14px rgba(79, 242, 200, 0.5);
+}
+
+.field.two {
+    flex-direction: row;
+    justify-content: space-around;
+    width: 100%;
+}
+
+.field.two > div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.field.two .val {
+    min-width: 0;
+}
+
+.board {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    color: #bfe8de;
+    font-size: clamp(13px, 3.6vw, 16px);
+    text-align: left;
+}
+
+.board li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 6px;
+    border-bottom: 1px dashed rgba(79, 242, 200, 0.18);
+}
+
+.board li span:last-child {
+    color: var(--amber);
+}
+
+.noticetext {
+    margin: 0;
+    line-height: 1.5;
+    color: #bfe8de;
+}
+
+.btn.small {
+    width: auto;
+    padding: 10px 14px;
+    font-size: 14px;
+}
+
+.chatbar {
+    position: fixed;
+    left: 50%;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 20;
+    width: min(96vw, 560px);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 10px;
+    border: 2px solid var(--neon);
+    border-radius: 12px;
+    background: rgba(4, 14, 13, 0.92);
+    box-shadow: 0 0 18px rgba(79, 242, 200, 0.3);
+}
+
+.chatbar .input {
+    text-align: left;
+    flex: 1;
+    min-width: 0;
+}
+
+.players {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 15;
+    width: min(92vw, 330px);
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+    padding: 12px;
+    border: 2px solid var(--neon);
+    border-radius: 12px;
+    background: rgba(4, 14, 13, 0.92);
+    box-shadow: 0 0 18px rgba(79, 242, 200, 0.3);
+    color: #cfeee6;
+}
+
+.players h4 {
+    margin: 12px 0 6px;
+    color: var(--amber);
+    letter-spacing: 1px;
+    font-size: 13px;
+    text-transform: uppercase;
+}
+
+.phead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--neon);
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.prow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(79, 242, 200, 0.18);
+}
+
+.pinfo {
+    min-width: 0;
+}
+
+.pname {
+    font-weight: 700;
+    color: var(--neon);
+    overflow-wrap: anywhere;
+}
+
+.pextra {
+    margin-left: 8px;
+    color: var(--amber);
+}
+
+.pchat {
+    font-size: 13px;
+    color: #9fc9bf;
+    overflow-wrap: anywhere;
+}
+
+.pblock {
+    flex: none;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    color: #ff8a80;
+    background: transparent;
+    border: 1.5px solid #ff8a80;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.pblock.on {
+    color: var(--ink);
+    background: #ff8a80;
+}
+
+.phint {
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: #6f8f88;
+}

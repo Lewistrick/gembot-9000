@@ -1,0 +1,189 @@
+// Connection to the server and the client's copy of the shared game state.
+// The server sends batches (JSON arrays) of typed messages; see app/connection.py.
+
+const ANCHOR_Y = 0.75;         // player sits 75% down the screen (more map ahead)
+const MARGIN = 4;              // extra viewport tiles beyond what rotation needs
+const MIN_TILE = 10, MAX_TILE = 60, ZOOM_STEP = 3;
+const OTHER_MS = 100;          // other robots update at 10 Hz; interpolate over that
+
+const view = { cols: 41, rows: 41 };   // tiles the server should keep loaded around us
+const DEFAULT_COLORS = { floor: "#d8c9a8", rock: "#2a2f38", grid: "#cbbd9d", player: "#e53935", gem: "#2ec4ff" };
+
+const G = {
+    state: "menu",             // menu | joining | playing | kicked | full
+    connected: false,
+    me: null,                  // { id, num, name, hue }
+    day: "", cap: 100, tickMs: 50, maxSpeed: 15, baseR: 10,
+    colors: null,              // base palette from welcome
+    pal: null,                 // palette drifted by distance (from board messages)
+    x: 0, y: 0, h: 0, speed: 0,
+    cargo: 0, score: 0, flipping: false, bump: 0,
+    rank: null, online: 0, top: [], mult: 1,
+    others: new Map(),         // num -> { from, to, t0 } (interpolated positions)
+    meta: new Map(),           // num -> { id, name, chat, hue }
+    toasts: [],                // { text, color, t0, dur }
+    idleUntil: 0,              // performance.now() deadline of the idle warning, or 0
+};
+
+let ws = null;
+let myName = "";               // nickname sent when joining
+let wantPlaying = false;       // true while we should (re)connect and stay in the game
+let camFrom = { x: 0, y: 0, h: 0 }, camTo = { x: 0, y: 0, h: 0 };
+let segStart = 0, segDur = 50, haveCam = false;
+
+// Stable per-browser token so a reconnect resumes the same robot and score.
+let token = null;
+try { token = localStorage.getItem("gembot-token"); } catch (e) { /* storage blocked */ }
+if (!token) {
+    token = Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    try { localStorage.setItem("gembot-token", token); } catch (e) { /* ignore */ }
+}
+
+function curColors() { return G.pal || G.colors || DEFAULT_COLORS; }
+
+function send(msg) {
+    if (msg.action !== "resize") G.idleUntil = 0;   // any real input dismisses the idle warning
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function toast(text, color, dur) {
+    G.toasts.push({ text, color: color || HUD.neon, t0: performance.now(), dur: dur || 3500 });
+    if (G.toasts.length > 5) G.toasts.shift();
+}
+
+function viewportTiles() {
+    const rect = stage.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    // Square viewport big enough that the rotated, off-centre screen always fits.
+    const reach = Math.hypot(rect.width / 2, rect.height * ANCHOR_Y);
+    const n = Math.max(9, (Math.ceil((2 * reach) / tile) + MARGIN) | 1);
+    return { cols: n, rows: n };
+}
+
+function reportViewport() {
+    const v = viewportTiles();
+    view.cols = v.cols; view.rows = v.rows;
+    send({ action: "resize", cols: v.cols, rows: v.rows });
+}
+
+function currentCam() {
+    const t = Math.min(1, (performance.now() - segStart) / segDur);
+    return {
+        x: lerp(camFrom.x, camTo.x, t),
+        y: lerp(camFrom.y, camTo.y, t),
+        h: lerp(camFrom.h, camTo.h, t),
+    };
+}
+
+function otherPos(o, now) {
+    const t = Math.min(1, (now - o.t0) / OTHER_MS);
+    return { x: lerp(o.from.x, o.to.x, t), y: lerp(o.from.y, o.to.y, t), h: lerp(o.from.h, o.to.h, t) };
+}
+
+// ---- Connecting ----
+function resetClientWorld() {
+    clearWorld();
+    G.others.clear(); G.meta.clear(); G.toasts.length = 0;
+    G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
+    haveCam = false;
+}
+
+function connect() {
+    if (ws) return;
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const sock = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
+    ws = sock;
+    sock.onopen = () => {
+        G.connected = true;
+        send({ action: "join", name: myName });
+        reportViewport();
+        sendControls(true);
+    };
+    sock.onmessage = (ev) => {
+        let list;
+        try { list = JSON.parse(ev.data); } catch (e) { return; }
+        for (const m of list) { const h = HANDLERS[m.t]; if (h) h(m); }
+    };
+    sock.onclose = () => {
+        if (ws === sock) ws = null;
+        G.connected = false;
+        if (wantPlaying) setTimeout(connect, 1000);
+    };
+}
+
+function joinGame(name) {
+    myName = name;
+    wantPlaying = true;
+    G.state = "joining";
+    resetClientWorld();
+    connect();
+}
+
+function leaveGame() {
+    wantPlaying = false;
+    send({ action: "quit" });
+    const sock = ws;
+    ws = null;
+    if (sock) sock.close();
+    G.state = "menu";
+    G.connected = false;
+}
+
+// ---- Server messages ----
+const HANDLERS = {
+    welcome(m) {
+        G.me = m.you; G.day = m.day; G.cap = m.cap; G.tickMs = m.tick_ms;
+        G.maxSpeed = m.max_speed; G.baseR = m.base; G.colors = m.colors; G.mult = m.mult;
+        CS = m.chunk;
+        G.state = "playing";
+        hideAllScreens();
+    },
+    chunk(m) { addChunk(m); },
+    drop(m) { dropChunks(m.c); },
+    mined(m) { for (const p of m.c) mined.add(p[0] + "," + p[1]); },
+    meta(m) { for (const e of m.list) G.meta.set(e.n, e); },
+    tick(m) {
+        camFrom = haveCam ? currentCam() : { x: m.x, y: m.y, h: m.h };
+        camTo = { x: m.x, y: m.y, h: m.h };
+        segStart = performance.now();
+        segDur = G.tickMs;
+        haveCam = true;
+        G.x = m.x; G.y = m.y; G.h = m.h; G.speed = m.s;
+        G.cargo = m.c; G.score = m.sc; G.flipping = m.f;
+        if (m.b) { G.bump = m.b; onBump(m.b); }
+        if (m.o) {
+            const now = performance.now(), seen = new Set();
+            for (const r of m.o) {
+                seen.add(r[0]);
+                const to = { x: r[1], y: r[2], h: r[3] };
+                const o = G.others.get(r[0]);
+                if (o) { o.from = otherPos(o, now); o.to = to; o.t0 = now; }
+                else G.others.set(r[0], { from: to, to, t0: now });
+            }
+            for (const k of G.others.keys()) if (!seen.has(k)) G.others.delete(k);
+        }
+    },
+    board(m) {
+        G.top = m.top; G.rank = m.you.rank; G.online = m.online; G.mult = m.mult;
+        G.pal = Object.assign({}, m.pal, { player: "#e53935" });
+        if (typeof refreshPlayersPanel === "function") refreshPlayersPanel();
+    },
+    announce(m) { toast(m.text, HUD.amber, 5000); },
+    gain(m) { toast(`+${m.v}${m.mega ? "  MEGA GEM!" : ""}`, m.mega ? HUD.amber : HUD.neon, m.mega ? 4500 : 1800); },
+    delivered(m) { toast(`BANKED +${m.v}`, "#3ef07a", 3000); },
+    warn(m) { G.idleUntil = performance.now() + m.left * 1000; },
+    kicked(m) {
+        wantPlaying = false;
+        G.state = "kicked";
+        showNotice(m.why === "replaced"
+            ? ["Opened elsewhere", "This game was opened in another tab or window, so this one was closed."]
+            : ["Removed for inactivity", "You were idle for 10 minutes. Your score and cargo are kept for today."]);
+    },
+    full(m) {
+        wantPlaying = false;
+        G.state = "full";
+        showNotice(["Server full", `${m.online} / ${m.cap} players are online. Try again in a moment.`]);
+    },
+};

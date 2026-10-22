@@ -1,105 +1,109 @@
 <meta charset="utf-8" />
 <title>GemBot 9000</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<link rel="icon" href="data:," />
 <link rel="stylesheet" href="/static/style.css" />
 
 <div id="stage"><canvas id="c"></canvas></div>
 
 <main id="menu" class="screen">
     <h1 class="logo">GEM<em>BOT</em> 9000</h1>
-    <p class="tag">// deep-core mining unit //</p>
+    <p class="tag">// one mine, one day, everybody digs //</p>
 
     <section class="panel">
         <div class="field">
-            <span class="lbl">Day</span>
-            <div class="stepper">
-                <button class="arrow" id="datePrev" aria-label="Previous day">&#9664;</button>
-                <span class="val" id="dateVal">----</span>
-                <button class="arrow" id="dateNext" aria-label="Next day">&#9654;</button>
-            </div>
+            <span class="lbl">Your name</span>
+            <input id="nick" class="input" maxlength="16" autocomplete="off" autocapitalize="off"
+                spellcheck="false" placeholder="pick a nickname" />
         </div>
-
+        <div class="field two">
+            <div><span class="lbl">Today</span><span class="val" id="dayVal">----</span></div>
+            <div><span class="lbl">Online</span><span class="val amber" id="onlineVal">-- / --</span></div>
+        </div>
         <div class="field">
-            <span class="lbl">Mode</span>
-            <div class="modes" id="modes">
-                <button class="mode" data-mode="dungeon">Dungeon</button>
-                <button class="mode" data-mode="cave">Caves</button>
-                <button class="mode" data-mode="aisles">Aisles</button>
-            </div>
-        </div>
-
-        <div class="field hi">
-            <span class="lbl">High Score</span>
-            <span class="val amber" id="hiScore">0</span>
+            <span class="lbl">Leaderboard</span>
+            <ol id="menuBoard" class="board"></ol>
         </div>
     </section>
 
-    <button id="playBtn" class="btn big">&#9654; Play</button>
+    <button id="playBtn" class="btn big">&#9654; Join the mine</button>
     <button id="howBtn" class="btn ghost">How to Play</button>
 </main>
 
 <section id="howto" class="screen hidden">
     <div class="howscroll">
         <h2>How to Play</h2>
-        <p class="lead">You are <b>GemBot 9000</b>, a stubby little mining robot lowered
-            into an endless underground mine. Buried in the dark rock are glittering
-            <b>gems</b> — and digging them out is your whole reason for being. The
-            further you rove from the entrance, the rarer and richer the seams become,
-            and the rock itself slowly shifts colour the deeper you go.</p>
+        <p class="lead">You are one of up to <b>100 GemBot 9000</b> mining robots sharing a
+            single underground mine. A brand-new mine opens every day, and whoever banks the
+            most gems by midnight wins the day.</p>
 
         <h3>Driving</h3>
-        <p>Steer with the arrow keys: <b>&uarr;</b> accelerate, <b>&darr;</b> brake,
-            <b>&larr; / &rarr;</b> turn. The whole mine rotates around you, so you are
-            always driving toward the top of the screen. Ease off the throttle and you
-            coast to a stop; steering bites harder the faster you go. Slam a rock and
-            you <b>bounce</b> off it. Tap <b>Space</b> (or the &#8635; button) to swing
-            around 180&deg; for a smooth about-face.</p>
+        <p><b>Keyboard:</b> <b>&uarr;</b> accelerate, <b>&darr;</b> brake, <b>&larr; / &rarr;</b>
+            turn (or W A S D). <b>Space</b> does a 180&deg; about-face. <b>PageUp / PageDown</b> zoom.
+            Rocks bounce you off, but you can't hurt anyone: robots pass through each other.</p>
+        <p><b>Touch:</b> hold the <b>left half</b> of the screen to turn left, the <b>right half</b>
+            to turn right, or <b>both</b> to go straight. Lift your fingers to brake.
+            Tap the <b>&#8635;</b> button to turn around.</p>
 
-        <h3>Rock</h3>
-        <p>Solid rock blocks your way. Clip it at an angle and you scrape along it; hit
-            it head-on and you stop dead. There's always another way around.</p>
+        <h3>Gems &amp; the base</h3>
+        <p>Drive over a gem to mine it. It goes into your <b>cargo</b>, and it's gone for everyone
+            for the rest of the day. Cargo only <b>scores once you bring it to the base</b> (the
+            dashed ring around the depot at the centre). Gems get richer, but rarer, the farther from
+            the base you go. Watch the radar for the glowing amber <b>mega gems</b>.</p>
 
-        <h3>Mining gems</h3>
-        <p>Gems grow as crystals embedded in the rock faces. Simply drive over one to
-            mine it — its value (<b>10&ndash;40</b>) is added to your score and it
-            crumbles into a little rubble. Once mined, it's gone for the rest of the run.</p>
+        <h3>Chat &amp; blocking</h3>
+        <p>Press <b>Enter</b> (or the speech-bubble button) and type a message; it floats above your
+            robot until you change or clear it. Open the <b>players</b> panel (<b>Tab</b> or the
+            two-heads button) to <b>block</b> someone's chat bubbles. It only affects what you see.</p>
 
-        <h3>Your dashboard</h3>
-        <p>The <b>compass</b> up top shows your heading, and doubles as a radar:
-            nearby gems appear as coloured blips and a little <b>house</b> marker
-            points back toward the entrance (where gems are richest). Your <b>score</b>
-            and <b>distance</b> from the entrance are top-right; the <b>speedometer</b>,
-            <b>about-face</b> button and <b>battery</b> sit along the bottom. Use
-            <b>PageUp / PageDown</b> to zoom.</p>
-
-        <h3>Goal</h3>
-        <p>Mine as many gems as you can and beat your <b>high score</b>. Every day and
-            every mode is a completely different mine, so there's always a new one to
-            crack.</p>
+        <h3>Staying in</h3>
+        <p>If you do nothing for 10 minutes you're removed to make room for others. Your score and
+            cargo are kept for the day, and you can rejoin.</p>
     </div>
     <button id="backBtn" class="btn big">&#9664; Back</button>
 </section>
 
 <section id="pause" class="screen hidden">
-    <h2 class="ptitle">Paused</h2>
+    <h2 class="ptitle">Menu</h2>
+    <p class="tag">the mine keeps running</p>
     <section class="panel">
-        <button id="resumeBtn" class="btn big">&#9654; Resume Game</button>
-        <button id="homeBtn" class="btn ghost">&#9632; Main Menu</button>
-        <button id="restartBtn" class="btn ghost">&#8635; Restart Run</button>
+        <button id="resumeBtn" class="btn big">&#9654; Back to the mine</button>
+        <button id="pausePlayersBtn" class="btn ghost">Players &amp; blocking</button>
         <button id="pauseHowBtn" class="btn ghost">How to Play</button>
+        <button id="leaveBtn" class="btn ghost">&#9632; Leave the mine</button>
     </section>
 </section>
 
-<section id="gameover" class="screen hidden">
-    <h2 class="ptitle amber">Game Over</h2>
+<section id="notice" class="screen hidden">
+    <h2 class="ptitle amber" id="noticeTitle">Notice</h2>
     <section class="panel">
-        <div class="field hi">
-            <span class="lbl">Final Score</span>
-            <span class="val amber" id="finalScore">0</span>
-        </div>
-        <button id="againBtn" class="btn big">&#8635; Play Again</button>
-        <button id="goHomeBtn" class="btn ghost">&#9632; Main Menu</button>
+        <p id="noticeText" class="noticetext"></p>
+        <button id="noticeBtn" class="btn big">Back to menu</button>
     </section>
 </section>
 
-<script src="/static/game.js"></script>
+<div id="chatbar" class="chatbar hidden">
+    <input id="chatin" class="input" maxlength="60" autocomplete="off" spellcheck="false"
+        placeholder="say something (max 60)" />
+    <button id="chatSend" class="btn big small">Send</button>
+    <button id="chatClear" class="btn ghost small">Clear</button>
+    <button id="chatCancel" class="btn ghost small">&times;</button>
+</div>
+
+<aside id="players" class="players hidden">
+    <div class="phead"><span>Players</span><button id="playersClose" class="btn ghost small">&times;</button></div>
+    <h4>Near you</h4>
+    <div id="nearList" class="plist"></div>
+    <h4>Today's top 10</h4>
+    <div id="topList" class="plist"></div>
+    <p class="phint">Blocking hides someone's chat bubble for you.</p>
+</aside>
+
+<script src="/static/util.js"></script>
+<script src="/static/art.js"></script>
+<script src="/static/world.js"></script>
+<script src="/static/net.js"></script>
+<script src="/static/hud.js"></script>
+<script src="/static/touch.js"></script>
+<script src="/static/main.js"></script>
+<script src="/static/ui.js"></script>
