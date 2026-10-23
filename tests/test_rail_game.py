@@ -79,15 +79,56 @@ def test_refusals_cost_nothing_and_explain_why() -> None:
     game.build_track("ann", 14, 0, True)
     assert not notes(ann, "built") and ann.score == 20
     assert "Needs 39" in notes(ann, "rail")[0]["msg"]
-    game.build_hub("ann")  # at the base disk
+    game.hub_options("ann")  # at the base disk
     assert "base" in notes(ann, "rail")[-1]["msg"]
 
 
-def test_standalone_hub_where_you_stand() -> None:
+def test_placing_a_hub_offers_nearby_hubs_and_builds_hub_and_track_together() -> None:
+    game, (ann,) = make("Ann")
+    a = lay(game, ann, 14, 0)
+    ann.place(20, 6)
+    game.hub_options("ann")
+    opts = notes(ann, "hubopts")[0]
+    assert (opts["x"], opts["y"]) == (20, 6)
+    assert [o["to"] for o in opts["opts"]] == [a, 0]
+    assert opts["opts"][0]["cost"] == HUB_COST + 8 and opts["opts"][0]["linked"]
+    before = ann.score
+    game.build_hub("ann", a, 20, 6)
+    new = game.rail.hubs[max(game.rail.hubs)]
+    assert (new.x, new.y, new.out, new.builder) == (20, 6, a, "ann")
+    assert ann.score == before - (HUB_COST + 8) and notes(ann, "built")
+
+
+def test_a_hub_is_never_built_without_a_track() -> None:
     game, (ann,) = make("Ann")
     ann.place(30, 0)
-    game.build_hub("ann")
-    assert game.rail.hubs[1].out is None and ann.spent == HUB_COST
+    game.build_hub("ann", 99, 30, 0)  # no such target
+    assert len(game.rail.hubs) == 1 and ann.spent == 0
+    game.build_hub("ann", 0, 31, 0)  # not the tile you are standing on
+    assert len(game.rail.hubs) == 1 and "moved" in notes(ann, "rail")[-1]["msg"]
+
+
+def test_placing_a_hub_needs_you_standing_still_and_enough_gems() -> None:
+    game, (ann,) = make("Ann", score=30)
+    ann.place(30, 0)
+    ann.speed = 9.0
+    game.hub_options("ann")
+    assert "Stand still" in notes(ann, "rail")[-1]["msg"]
+    ann.speed = 0.0
+    game.hub_options("ann")
+    assert not notes(ann, "hubopts") and "Needs 55" in notes(ann, "rail")[-1]["msg"]
+    game.build_hub("ann", 0, 30, 0)
+    assert len(game.rail.hubs) == 1 and ann.spent == 0
+
+
+def test_standing_on_a_hub_cannot_place_another_one() -> None:
+    game, (ann,) = make("Ann")
+    a = lay(game, ann, 14, 0)
+    ann.place(14, 0)
+    game.hub_options("ann")
+    assert "close" in notes(ann, "rail")[-1]["msg"]
+    game.build_hub("ann", 0, 14, 0)  # would otherwise just re-link a to the base
+    assert len(game.rail.hubs) == 2 and game.rail.hubs[a].out == 0
 
 
 # -- riding and tolls --------------------------------------------------------- #
@@ -153,8 +194,8 @@ def test_riding_to_the_base_delivers_the_cargo() -> None:
 def test_cannot_ride_to_another_network_or_while_moving() -> None:
     game, ann, _bob, _a, _b = two_player_network()
     ann.place(40, 40)
-    game.build_hub("ann")
-    loose = max(game.rail.hubs)
+    game.rail.restore([(50, 40, 40, "ann", None)])  # an old save's hub without a track
+    loose = 50
     ann.place(14, 0)
     ann.cargo = 5
     game.ride("ann", loose)

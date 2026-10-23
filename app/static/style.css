@@ -479,6 +479,30 @@ canvas {
     box-shadow: 0 0 16px rgba(79, 242, 200, 0.3);
 }
 
+.pickbar {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.picktitle {
+    color: var(--amber);
+    font-weight: 800;
+    letter-spacing: 1px;
+    font-size: 13px;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+.picklist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.picklist .btn {
+    text-align: left;
+}
+
 .hubtitle {
     color: var(--amber);
     font-weight: 800;

@@ -17,6 +17,7 @@ Messages, server -> client (``t`` is the type):
 * ``board``    top of the daily leaderboard, your rank, online count, palette
 * ``announce`` game-wide text; ``gain`` / ``delivered`` / ``warn`` / ``kicked``
   ``toll`` / ``rail`` (a message for a toast) / ``quote`` (build preview) /
+  ``hubopts`` (hubs a new hub on your tile could lead to) / ``built`` /
   ``net`` (the network map) are private notices
 """
 
@@ -124,8 +125,13 @@ class Connection:
             g.set_chat(pid, msg.get("text"))
         elif action == "quit":
             g.quit(pid)
+        elif action == "hub_options":
+            g.hub_options(pid)
         elif action == "build_hub":
-            g.build_hub(pid)
+            to, x, y = _int(msg, "to"), _int(msg, "x"), _int(msg, "y")
+            if to is None or x is None or y is None:
+                return
+            g.build_hub(pid, to, x, y)
         elif action == "build_track":
             x, y = _int(msg, "x"), _int(msg, "y")
             if x is None or y is None:

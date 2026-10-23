@@ -9,6 +9,8 @@ Pure logic with no knowledge of players or sockets (``game.py`` wires it in).
   to base", and has exactly one route home from every hub.
 * A track is a straight line (diagonals allowed) whose every tile must be floor.
   A hub costs ``HUB_COST`` and a track one point per tile of length (rounded).
+* A hub is never built on its own: it is always placed together with the track
+  that leads from it to an existing hub (see :meth:`Network.hub_options`).
 """
 
 import math
@@ -22,6 +24,8 @@ MIN_SPACING = 3  # hubs must be at least this far apart (tiles)
 BASE_GAP = 2  # new hubs must sit this far outside the base disk
 BASE_TAP = 2.0  # tapping this close to the origin means "the base"
 MAX_HUBS = 500
+OPTION_LIMIT = 3  # target hubs proposed when placing a hub
+OPTION_SEARCH = 24  # nearest hubs examined while looking for those
 RIDE_SPEED = 30.0  # tiles/second for a robot riding the rails
 CART_SPEED = 12.0  # tiles/second for a lone cargo cart
 
@@ -42,7 +46,7 @@ class Quote:
     ok: bool
     why: str = ""
     cost: int = 0
-    kind: str = ""  # "hub" (standalone), "track" (track + new hub) or "link"
+    kind: str = ""  # "track" (track + new hub) or "link"
     src: int | None = None  # hub the track starts at
     dst: int | None = None  # existing hub it ends at (link), else None
     x: int = 0  # target cell
@@ -168,12 +172,35 @@ class Network:
                 return "Too close to another hub."
         return ""
 
-    def quote_hub(self, world: World, x: int, y: int, score: int) -> Quote:
-        """Build a standalone hub (no track) on cell ``(x, y)``."""
+    def hub_options(
+        self, world: World, x: int, y: int, score: int
+    ) -> tuple[list[Quote], str]:
+        """Where a new hub on cell ``(x, y)`` could lead, nearest first.
+
+        Returns up to ``OPTION_LIMIT`` OK quotes (``quote.src`` is the existing hub
+        the new hub's track would lead to), or no quotes and the reason why.
+        """
         why = self._hub_site_problem(world, x, y)
-        if not why and score < HUB_COST:
-            why = f"Needs {HUB_COST} points (you have {score})."
-        return Quote(not why, why, HUB_COST, "hub", None, None, x, y)
+        if why:
+            return [], why
+        near = sorted(
+            (
+                h
+                for h in self.hubs.values()
+                if math.hypot(h.x - x, h.y - y) <= MAX_TRACK
+            ),
+            key=lambda h: math.hypot(h.x - x, h.y - y),
+        )[:OPTION_SEARCH]
+        if not near:
+            return [], f"No hub within {MAX_TRACK} tiles to lead to."
+        quotes = [self.quote_track(world, h.id, x, y, score) for h in near]
+        ok = [q for q in quotes if q.ok][:OPTION_LIMIT]
+        if ok:
+            return ok, ""
+        poor = [q for q in quotes if q.why.startswith("Needs")]
+        if poor:  # the track is clear but too dear: say what the cheapest costs
+            return [], min(poor, key=lambda q: q.cost).why
+        return [], "Rock blocks the way to every hub in reach."
 
     def quote_track(
         self, world: World, src: int, tx: int, ty: int, score: int
@@ -248,13 +275,12 @@ class Network:
         if not q.ok:
             raise ValueError("cannot apply a refused quote")
         created = None
-        if q.kind in ("hub", "track"):
+        if q.kind == "track":
             created = Hub(self.next_id, q.x, q.y, builder, None)
             self.hubs[created.id] = created
             self.next_id += 1
             self.log.append(created.id)
-            if q.kind == "track":
-                created.out = q.src
+            created.out = q.src
         else:
             assert q.out_hub is not None and q.out_to is not None
             self.hubs[q.out_hub].out = q.out_to

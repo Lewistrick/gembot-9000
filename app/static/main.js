@@ -133,6 +133,7 @@ function draw() {
     }
 
     const now = performance.now();
+    easeCamHeading(now);
     const cam = currentCam();
     const colors = curColors();
     const ax = W / 2, ay = H * ANCHOR_Y;   // player anchor on screen
@@ -146,7 +147,11 @@ function draw() {
     ART.base(ctx, bp[0], bp[1], tile, now);
     drawCarts(cam, ax, ay, W, H, now, colors);
     drawOthers(cam, ax, ay, W, H, now);
-    drawRobot(ax, ay, tile, { player: accent(G.me.hue) }, now);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(cam.rh - cam.h);                // the robot swings off "up" while the map catches up
+    drawRobot(0, 0, tile, { player: accent(G.me.hue) }, now);
+    ctx.restore();
     drawRobotLabels(ax, ay, G.meta.get(G.me.num) || { name: G.me.name, chat: "", id: G.me.id }, now);
     drawBuildPreview(cam, ax, ay, now);
 

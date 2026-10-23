@@ -8,7 +8,7 @@ import numpy as np
 
 from app.connection import VIEW_MAX, VIEW_MIN, Connection, hue_for
 from app.game import Game
-from app.grid import BASE_RADIUS, CHUNK
+from app.grid import BASE_RADIUS, CHUNK, World
 
 
 def make() -> tuple[Game, Connection, Connection]:
@@ -173,3 +173,24 @@ def test_hostile_numbers_never_raise() -> None:
         ca.handle({"action": "ride", "to": bad})
     assert VIEW_MIN <= ca.cols <= VIEW_MAX + 1 and VIEW_MIN <= ca.rows <= VIEW_MAX + 1
     assert len(game.rail.hubs) == 1  # nothing got built
+
+
+class OpenWorld(World):
+    def is_floor(self, x: int, y: int) -> bool:
+        return True
+
+
+def test_hub_placement_messages_reach_the_game() -> None:
+    game, ca, _ = make()
+    game.world = OpenWorld("t")
+    p = game.players["a"]
+    p.delivered = 500
+    p.place(30, 0)
+    ca.handle({"action": "hub_options"})
+    opts = of(ca.frame([0])[0], "hubopts")
+    assert opts and opts[0]["opts"][0]["to"] == 0
+    ca.handle({"action": "build_hub", "to": "x", "x": 30, "y": 0})  # malformed: ignored
+    ca.handle({"action": "build_hub", "to": 0})
+    assert len(game.rail.hubs) == 1
+    ca.handle({"action": "build_hub", "to": 0, "x": 30, "y": 0})
+    assert len(game.rail.hubs) == 2 and game.rail.hubs[1].out == 0

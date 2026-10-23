@@ -8,6 +8,8 @@ from app.grid import World
 from app.rail import (
     HUB_COST,
     MAX_TRACK,
+    OPTION_LIMIT,
+    Hub,
     Network,
     advance,
     line_cells,
@@ -41,6 +43,13 @@ def build(net: Network, world: World, src: int, x: int, y: int, who: str = "a") 
     return created.id if created else (q.out_hub or -1)
 
 
+def loose(net: Network, x: int, y: int) -> Hub:
+    """A hub without a track, as an old save can still contain (none can be built now)."""
+    hid = net.next_id
+    net.restore([(hid, x, y, "a", None)])
+    return net.hubs[hid]
+
+
 def test_line_cells_include_both_ends_and_stay_connected() -> None:
     assert line_cells(0, 0, 4, 0) == [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)]
     diag = line_cells(2, 2, -2, -2)
@@ -58,15 +67,40 @@ def test_track_cost_rounds_to_whole_tiles() -> None:
     assert track_cost(7.07) == 7  # a 5x5 diagonal
 
 
-def test_standalone_hub_rules(world: Open) -> None:
+def test_hub_options_propose_the_nearest_reachable_hubs_with_their_cost(
+    world: Open,
+) -> None:
     net = Network()
-    assert net.quote_hub(world, 15, 0, 100).ok
-    assert "base" in net.quote_hub(world, 5, 5, 100).why
-    assert "floor" in net.quote_hub(Walled("t"), 20, 15, 100).why
-    assert "Needs 25" in net.quote_hub(world, 15, 0, 24).why
-    net.apply(net.quote_hub(world, 15, 0, 100), "a")
-    assert "close" in net.quote_hub(world, 16, 1, 100).why
-    assert net.quote_hub(world, 18, 0, 100).ok  # 3 tiles away is fine
+    near = build(net, world, 0, 14, 0)
+    far = build(net, world, near, 14, 30)
+    build(net, world, far, 14, 60)
+    build(net, world, far, 40, 30)
+    quotes, why = net.hub_options(world, 20, 6, 10_000)
+    assert why == "" and len(quotes) == OPTION_LIMIT
+    assert quotes[0].src == near and quotes[0].cost == HUB_COST + 8
+    dists = [q.length for q in quotes]
+    assert dists == sorted(dists)
+    assert all(q.ok and q.kind == "track" and (q.x, q.y) == (20, 6) for q in quotes)
+
+
+def test_hub_options_only_offer_what_the_player_can_pay_for(world: Open) -> None:
+    net = Network()
+    near = build(net, world, 0, 14, 0)
+    quotes, _ = net.hub_options(world, 20, 6, HUB_COST + 8)
+    assert [q.src for q in quotes] == [near]  # the base is further and too dear
+    quotes, why = net.hub_options(world, 20, 6, HUB_COST + 7)
+    assert not quotes and "Needs" in why
+
+
+def test_hub_options_explain_a_refusal(world: Open) -> None:
+    net = Network()
+    assert "Too close to the base" in net.hub_options(world, 4, 4, 100)[1]
+    assert "No hub within" in net.hub_options(world, 150, 0, 100)[1]
+    build(net, world, 0, 14, 0)
+    assert "Too close to another hub" in net.hub_options(world, 15, 1, 100)[1]
+    assert "floor" in net.hub_options(Walled("t"), 20, 15, 100)[1]
+    behind_wall = net.hub_options(Walled("t"), 30, 0, 100)
+    assert not behind_wall[0] and "Rock" in behind_wall[1]
 
 
 def test_new_hub_costs_hub_plus_track_and_leads_back(world: Open) -> None:
@@ -90,8 +124,7 @@ def test_the_base_never_gets_an_outgoing_track(world: Open) -> None:
     net = Network()
     a = build(net, world, 0, 14, 0)
     assert net.hubs[0].out is None and net.hubs[a].out == 0
-    free = net.apply(net.quote_hub(world, 0, 20, 100), "a")  # standalone, no track yet
-    assert free is not None
+    free = loose(net, 0, 20)
     # linking the loose hub to the base makes the loose hub lead to the base
     q = net.quote_track(world, free.id, 0, 0, 100)
     assert q.ok and q.out_hub == free.id and q.out_to == 0
@@ -102,9 +135,8 @@ def test_the_base_never_gets_an_outgoing_track(world: Open) -> None:
 def test_links_choose_the_free_end_and_refuse_loops(world: Open) -> None:
     net = Network()
     a = build(net, world, 0, 14, 0)  # a -> base
-    b = net.apply(net.quote_hub(world, 14, 14, 100), "a")  # loose
-    c = net.apply(net.quote_hub(world, 28, 14, 100), "a")  # loose
-    assert b and c
+    b = loose(net, 14, 14)
+    c = loose(net, 28, 14)
     link = net.quote_track(world, a, 14, 14, 100)  # from a (has out) to loose b
     assert link.ok and link.out_hub == b.id and link.out_to == a
     net.apply(link, "a")
@@ -122,12 +154,11 @@ def test_links_choose_the_free_end_and_refuse_loops(world: Open) -> None:
 
 def test_a_hub_cannot_link_to_its_own_subtree(world: Open) -> None:
     net = Network()
-    loose = net.apply(net.quote_hub(world, 15, 0, 100), "a")
-    assert loose
-    child = build(net, world, loose.id, 30, 0)  # child -> loose (loose has no out)
-    q = net.quote_track(world, loose.id, 30, 0, 100)
-    assert not q.ok  # loose -> child would close a loop
-    assert child in net.component(loose.id)
+    root = loose(net, 15, 0)
+    child = build(net, world, root.id, 30, 0)  # child -> root (root has no out)
+    q = net.quote_track(world, root.id, 30, 0, 100)
+    assert not q.ok  # root -> child would close a loop
+    assert child in net.component(root.id)
 
 
 def test_routes_run_both_ways_through_the_common_parent(world: Open) -> None:
@@ -139,8 +170,8 @@ def test_routes_run_both_ways_through_the_common_parent(world: Open) -> None:
     assert net.route(c, b) == [c, a, b]
     assert net.route(b, 0) == [b, a, 0]
     assert net.route(0, b) == [0, a, b]
-    loose = net.apply(net.quote_hub(world, -20, -20, 100), "a")
-    assert loose and net.route(loose.id, b) is None
+    stray = loose(net, -20, -20)
+    assert net.route(stray.id, b) is None
     assert set(net.component(b)) == {0, a, b, c}
 
 

@@ -367,19 +367,58 @@ class Game:
             "len": round(q.length, 1),
         }
 
-    def build_hub(self, pid: str) -> None:
-        """Build a standalone hub where the player is standing."""
+    def _standing_still(self, player: Player) -> bool:
+        """Slow enough to count as stopped (the same limit as parking on a hub)."""
+        return player.speed <= 2.5
+
+    def hub_options(self, pid: str) -> None:
+        """Propose the hubs a new hub on the player's tile could lead to."""
         player = self._rail_player(pid)
         if player is None:
             return
-        q = self.rail.quote_hub(
-            self.world, round(player.x), round(player.y), player.score
-        )
+        if not self._standing_still(player):
+            return self._say(player, False, "Stand still to place a hub.")
+        x, y = round(player.x), round(player.y)
+        quotes, why = self.rail.hub_options(self.world, x, y, player.score)
+        if not quotes:
+            return self._say(player, False, why)
+        opts = []
+        for q in quotes:
+            assert q.src is not None
+            target = self.rail.hubs[q.src]
+            opts.append(
+                {
+                    "to": target.id,
+                    "x": target.x,
+                    "y": target.y,
+                    "cost": q.cost,
+                    "len": round(q.length, 1),
+                    "linked": self.rail.root(target.id) == 0,
+                }
+            )
+        player.notices.append({"t": "hubopts", "x": x, "y": y, "opts": opts})
+
+    def build_hub(self, pid: str, to: int, x: int, y: int) -> None:
+        """Place a hub on the player's tile with a track leading to hub ``to``."""
+        player = self._rail_player(pid)
+        if player is None:
+            return
+        if not self._standing_still(player) or (round(player.x), round(player.y)) != (
+            x,
+            y,
+        ):
+            return self._say(player, False, "You moved. Place the hub again.")
+        if to not in self.rail.hubs:
+            return self._say(player, False, "That hub is gone.")
+        q = self.rail.quote_track(self.world, to, x, y, player.score)
+        if q.kind != "track":  # standing on a hub: that would only link two hubs
+            return self._say(player, False, "Too close to another hub.")
         if not q.ok:
             return self._say(player, False, q.why)
         player.spent += q.cost
         self.rail.apply(q, pid)
         self._say(player, True, f"Hub built (-{q.cost})")
+        player.notices.append({"t": "built"})
 
     def build_track(self, pid: str, x: int, y: int, confirm: bool) -> None:
         """Lay a track from the hub under the player to ``(x, y)`` (preview, then confirm)."""

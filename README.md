@@ -17,7 +17,7 @@ or, without Docker (needs [uv](https://docs.astral.sh/uv/)):
 uv run uvicorn app.server:app --port 8004 --reload
 ```
 
-Pick a nickname on the menu and join. The map rotates to your heading.
+Pick a nickname on the menu and join. The map rotates to follow your heading with a little lag, so the robot swings off "up" while you turn. Steering builds up and eases back instead of snapping.
 
 | Input | Keyboard | Touch |
 |---|---|---|
@@ -26,7 +26,7 @@ Pick a nickname on the menu and join. The map rotates to your heading.
 | Chat | Enter | the speech-bubble button |
 | Players, blocking | Tab | the two-heads button (or tap your score) |
 | Rails | R (when parked on a hub) | the panel that appears on a hub |
-| Loose hub where you stand | B | Menu → *Build a hub here* |
+| Place a hub where you stand | B | the **Place hub** button (shown when you stand still on an empty tile) |
 | Zoom | PageUp / PageDown, + / − | |
 
 ## The rules
@@ -42,6 +42,9 @@ Pick a nickname on the menu and join. The map rotates to your heading.
   from your score. Each hub has **one outgoing track** and any number of incoming ones, and
   loops are refused, so every linked hub has exactly one way home. Everything is shared.
   Preview first (green/red line with the cost), then tap again to build.
+  You can also **place a hub where you stand** (stand still on an empty tile): you are offered
+  the nearest hubs it could lead to (up to 3, only those you can afford with a clear track),
+  and picking one builds the hub and its track together. A hub never exists without a track.
 - **Using rails.** The network map lets you **ride** to any hub of the same network, in either
   direction (fast), or **ship your cargo** to the base on its own cart.
 - **Tolls.** Every hub on your route that someone *else* built costs **1 point of cargo**,
