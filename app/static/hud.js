@@ -193,14 +193,14 @@ function drawSquareButton(x, y, s, kind, on) {
 
 // Circular minimap around the player, turning with the heading like the main view:
 // floor and rock, gems you haven't mined, hubs (gray) and the base (yellow).
-const MAP_RADIUS = 26;          // tiles shown in every direction
+const MAP_RADIUS = 26 * Math.SQRT2;   // tiles shown in every direction: twice the area of the original 26-tile map
 function drawMinimap(cam, x, y, size) {
     const r = size / 2, cx = x + r, cy = y + r, px = r / MAP_RADIUS, colors = curColors();
     ctx.save();
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.clip();
     ctx.fillStyle = colors.rock; ctx.fillRect(x, y, size, size);          // rock and anything not loaded yet
     ctx.translate(cx, cy); ctx.rotate(-cam.h);
-    const ox = Math.round(cam.x), oy = Math.round(cam.y), n = MAP_RADIUS + 1;
+    const ox = Math.round(cam.x), oy = Math.round(cam.y), n = Math.ceil(MAP_RADIUS) + 1;
     ctx.fillStyle = colors.floor;
     for (let j = -n; j <= n; j++) {
         for (let i = -n; i <= n; i++) {
@@ -279,7 +279,7 @@ function drawHUD(cam, W, H) {
     hudHit.lens = { x: M + topH + gap0, y: M, w: topH, h: topH };
     drawSquareButton(M + 2 * (topH + gap0), M, topH, "map", G.showMap);
     hudHit.minimap = { x: M + 2 * (topH + gap0), y: M, w: topH, h: topH };
-    if (G.showMap) drawMinimap(cam, M, M + topH + gap0, Math.max(192, Math.min(380, S * 0.6, W * 0.8)));
+    if (G.showMap) drawMinimap(cam, M, M + topH + gap0, Math.max(96, Math.min(190, S * 0.3)) * Math.SQRT2);
 
     // Bottom centre: [hub | ship]  [about-face]  [travel], thumb-sized on touch.
     const fbR = touch ? Math.max(28, Math.min(46, S * 0.075)) : Math.max(20, Math.min(38, S * 0.05));
