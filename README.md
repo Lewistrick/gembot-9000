@@ -27,7 +27,7 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 | Block someone | click their robot, then Block | tap their robot, then Block (Tab or your score lists nearby players) |
 | Ship gems / travel (parked on a hub) | G / T | the **SHIP** and **TRAVEL** buttons that appear beside ↻ when you park on a hub; TRAVEL toggles travel mode, then tap a track to ride it |
 | Place a hub where you stand | B | the **HUB** button beside ↻ (only shown if you could pay for one; lit when you stand still on an empty tile) |
-| Lens / minimap / network | the 🔍, map and network buttons beside the menu button (the network button shows the whole rail network, north up, with you and the base marked) | the same buttons |
+| Lens / minimap / network | the 🔍, map and network buttons beside the menu button (the network button opens the whole rail network fullscreen, north up, with you and the base marked: drag to pan, scroll/pinch to zoom, ✕ or Esc to leave) | the same buttons |
 | Zoom | PageUp / PageDown, + / − | |
 
 ## The rules
