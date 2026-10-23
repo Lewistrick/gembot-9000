@@ -1,312 +1,223 @@
-"""FastAPI server for GemBot 9000.
+"""FastAPI server for GemBot 9000: one shared world per day, up to 100 players.
 
-All game logic lives here in Python: world generation, the player's vehicle
-physics (throttle / brake / steering), collision, seed selection and viewport
-extraction. The browser is a thin client that streams which control keys are held
-and smoothly renders the rotating viewport the server streams back each tick.
+A single global 20 Hz loop advances the :class:`~app.game.Game` and pushes each
+connected player their messages (built by :class:`~app.connection.Connection`).
+Each socket has its own writer task, so one slow client can never stall the loop:
+reliable messages queue up (and the client is dropped if it falls far behind)
+while the volatile ``tick`` message is simply overwritten.
 """
 
 import asyncio
-import math
-from datetime import datetime
+import contextlib
+import hashlib
+import json
+import logging
+import os
+import time
+from collections import deque
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .grid import CHUNK, DEFAULT_STYLE, World
+from .connection import Connection, dump_tick
+from .game import MAX_PLAYERS, Game, today
+from .player import TICK
+from .store import Store
+
+log = logging.getLogger("gembot")
 
 _STATIC = Path(__file__).parent / "static"
-_STYLES = {"dungeon", "aisles", "cave"}
-
-_TICK = 0.05  # physics/stream step in seconds (20 Hz)
-_MAX_SPEED = 15.0  # tiles/second (must keep speed*_TICK < 1 so we can't skip tiles)
-_ACCEL = 16.0  # tiles/second^2 while accelerating (Up)
-_BRAKE = 26.0  # tiles/second^2 while braking (Down)
-_DRAG = 0.5  # fraction of speed lost per second when coasting
-_STEER = 2.8  # radians/second while steering at speed (Left/Right)
-_STEER_MIN = 0.35  # fraction of the steering rate available at a standstill
-
-# Energy / scoring knobs (energy runs 0..100; tweak freely to tune the game).
-DRAIN_ENERGY_LOSS = 1.8  # baseline energy drained per second, even standing still
-DRAIN_ACCEL_LOSS = 4.0  # extra energy/second while accelerating (throttle, below top speed)
-HIT_ENERGY_LOSS = 0.9  # energy lost per tile/s of impact driven into a wall
-GEM_ENERGY_GAIN = 0.6  # energy recovered per gem = its value times this factor
-
-# Wall-bounce knobs. On a hit the into-wall speed is reversed into a short-lived
-# "knockback" velocity (heading is left alone), so the vehicle rebounds off the
-# rock and the player steers/throttles their way back out.
-_BOUNCE = 0.85  # fraction of the into-wall speed reflected back as knockback
-_HIT_SLOW = 0.85  # forward speed kept after a hit (times the glancing fraction)
-_KNOCK_KEEP = 0.88  # knockback velocity retained per tick (~0.35 s to fade out)
-
-# About-face knobs. The Space button swings the truck 180° smoothly (rather than
-# snapping the view around), coasting down to a near-stop as it pivots.
-_FLIP_TIME = 0.6  # seconds to complete the half-turn
-_FLIP_RATE = math.pi / _FLIP_TIME  # radians/second while turning around
-_FLIP_SLOW = 0.88  # speed retained per tick during the turn (coasts to a pivot)
+_CHUNK_BUDGET = 12  # new chunks generated per tick across all players (~2 ms each)
+_MAX_BACKLOG = 400  # queued reliable messages before a slow client is dropped
+_MAX_MSG_LEN = 2048  # bytes; client messages are tiny
+_MAX_MSGS_PER_SEC = 120  # per-socket flood limit
 
 
-def _today() -> str:
-    """Today's local date as an ISO string, used as the default seed."""
-    return datetime.now().astimezone().date().isoformat()
+def _dump(obj: object) -> str:
+    return json.dumps(obj, separators=(",", ":"))
 
 
-def _clamp(v: float, lo: float, hi: float) -> float:
-    return max(lo, min(v, hi))
+class Link:
+    """One live websocket: its protocol state, outbox and writer task."""
+
+    def __init__(self, sock: WebSocket, conn: Connection) -> None:
+        self.sock = sock
+        self.conn = conn
+        self.pending: list[str] = []  # reliable messages, already serialised
+        self.latest: str | None = None  # newest volatile tick (older ones dropped)
+        self.wake = asyncio.Event()
+        self.closing = False
+        self.slow = False
+
+    def push(self, reliable: list[dict], tick: dict | None) -> None:
+        self.pending.extend(_dump(m) for m in reliable)
+        if len(self.pending) > _MAX_BACKLOG:
+            self.slow, self.closing = True, True
+        if tick is not None:
+            self.latest = dump_tick(tick)
+        self.wake.set()
+
+    def finish(self) -> None:
+        """Flush what is queued, then close the socket."""
+        self.closing = True
+        self.wake.set()
+
+    async def writer(self) -> None:
+        with contextlib.suppress(WebSocketDisconnect, RuntimeError):
+            while True:
+                await self.wake.wait()
+                self.wake.clear()
+                batch, self.pending = self.pending, []
+                if self.latest is not None:
+                    batch.append(self.latest)
+                    self.latest = None
+                if self.slow:
+                    break
+                if batch:
+                    await self.sock.send_text("[" + ",".join(batch) + "]")
+                if self.closing:
+                    break
+            await self.sock.close()
 
 
-class Session:
-    """Per-connection game state: world, the player vehicle and the viewport."""
+class Hub:
+    """Owns the game, the live links, persistence and the global tick loop."""
 
-    def __init__(self) -> None:
-        self.style = DEFAULT_STYLE
-        self.world = World(_today(), self.style)
-        self.px = 0.0
-        self.py = 0.0
-        self.heading = 0.0  # radians; 0 points up (-y). Forward = (sin, -cos).
-        self.speed = 0.0  # tiles/second along the heading, never negative
-        self.kx = 0.0  # knockback velocity (tiles/s), decoupled from heading
-        self.ky = 0.0
-        self.bump = 0.0  # into-wall impact this tick (drives the client's red flash)
-        self.flip_remaining = 0.0  # radians left in a smooth 180° about-face
-        self.up = self.down = self.left = self.right = False
-        self.cols = 41
-        self.rows = 41
-        self.score = 0
-        self.energy = 100.0  # 0..100; hitting 0 ends the run
-        self.collected: set[tuple[int, int]] = set()  # gems already picked up
-        self.running = False  # True only while the client is actively playing
-        self.dead = False  # True once energy has run out
-        self._dirty = True
-        self._spawn()
+    def __init__(
+        self,
+        db_path: str | None = None,
+        day_fn: Callable[[], str] = today,
+    ) -> None:
+        path = db_path or os.environ.get("GEMBOT_DB") or "data/gembot.db"
+        if path != ":memory:":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.day_fn = day_fn
+        self.store = Store(path)
+        day = day_fn()
+        self.store.close_out_past_days(day)
+        self.store.prune(day)
+        self.game = Game(day, crown_pid=self.store.last_winner_before(day))
+        self.store.load_into(self.game)
+        self.links: dict[str, Link] = {}
+        self.tick_ms: deque[float] = deque(maxlen=400)
+        self._saving = False
+        self._tasks: set[asyncio.Task] = set()
 
-    def _spawn(self) -> None:
-        """Place the player on the nearest floor tile to the origin, at rest."""
-        self.speed = 0.0
-        self.kx = self.ky = self.bump = 0.0
-        self.flip_remaining = 0.0
-        self.heading = 0.0
-        for radius in range(64):
-            for dy in range(-radius, radius + 1):
-                for dx in range(-radius, radius + 1):
-                    if self.world.is_floor(dx, dy):
-                        self.px, self.py = float(dx), float(dy)
-                        return
+    def step(self) -> None:
+        """One game tick plus one outgoing frame per connection."""
+        self.game.tick()
+        budget = [_CHUNK_BUDGET]
+        links = list(self.links.values())
+        if links:  # rotate the start so nobody is always first in line for chunks
+            k = self.game.tick_count % len(links)
+            links = links[k:] + links[:k]
+        for link in links:
+            reliable, tick = link.conn.frame(budget)
+            link.push(reliable, tick)
+            if not link.conn.player.in_world:
+                link.finish()
 
-    def _bound_cache(self) -> None:
-        """Keep only the on-screen chunks (plus a one-chunk margin) in memory."""
-        span = (self.cols // CHUNK + 3) * (self.rows // CHUNK + 3)
-        self.world.max_chunks = max(span, 16)
-
-    def set_controls(self, up: bool, down: bool, left: bool, right: bool) -> None:
-        self.up, self.down, self.left, self.right = up, down, left, right
-        self._dirty = True
-
-    def regenerate(self, seed: str, style: str) -> None:
-        self.style = style if style in _STYLES else self.style
-        self.world = World(seed, self.style)
-        self.up = self.down = self.left = self.right = False
-        self.score = 0  # a new world is a fresh run
-        self.energy = 100.0
-        self.dead = False
-        self.running = True  # pressing Play/Restart starts the run
-        self.collected.clear()
-        self._bound_cache()
-        self._spawn()
-        self._dirty = True
-
-    def request_flip(self) -> None:
-        """Begin a smooth 180° about-face (ignored if one is already running)."""
-        if self.running and not self.dead and self.flip_remaining == 0.0:
-            self.flip_remaining = math.pi
-            self._dirty = True
-
-    def set_running(self, on: bool) -> None:
-        """Pause/resume the run (menu, pause overlay). Stops drain when off."""
-        if not self.dead:
-            self.running = on
-        if not on:  # freeze the vehicle while paused
-            self.up = self.down = self.left = self.right = False
-        self._dirty = True
-
-    def resize(self, cols: int, rows: int) -> None:
-        self.cols = max(9, cols | 1)
-        self.rows = max(9, rows | 1)
-        self._bound_cache()
-        self._dirty = True
-
-    def active(self) -> bool:
-        """Whether the client needs a steady frame stream (energy always drifts
-        while a run is live, so we stream continuously until paused or dead)."""
-        return self.running and not self.dead
-
-    def tick(self) -> None:
-        """Advance the vehicle one physics step: steer, throttle/brake, move."""
-        if not self.running or self.dead:
+    # -- persistence ---------------------------------------------------- #
+    async def save(self) -> None:
+        """Snapshot in the loop, write in a worker thread (skipped if one is running)."""
+        if self._saving:
             return
-        dt = _TICK
-        if self.flip_remaining > 0.0:
-            # About-face: rotate steadily toward the reversed heading and coast
-            # down to a near-stop, ignoring steer/throttle until it finishes.
-            step = min(self.flip_remaining, _FLIP_RATE * dt)
-            self.heading += step
-            self.flip_remaining -= step
-            self.speed *= _FLIP_SLOW
-        else:
-            # Turn rate scales with speed (subtle at a crawl, fuller at speed).
-            turn = _STEER * (_STEER_MIN + (1.0 - _STEER_MIN) * self.speed / _MAX_SPEED)
-            if self.left:
-                self.heading -= turn * dt
-            if self.right:
-                self.heading += turn * dt
-            if self.up:
-                self.speed += _ACCEL * dt
-            if self.down:
-                self.speed -= _BRAKE * dt
-            self.speed -= self.speed * _DRAG * dt  # coasting drag
-            self.speed = _clamp(self.speed, 0.0, _MAX_SPEED)
-            if self.speed < 0.05 and not self.up:
-                self.speed = 0.0
+        self._saving = True
+        try:
+            snap = self.store.snapshot(self.game)
+            await asyncio.to_thread(self.store.write, snap)
+        except Exception:
+            log.exception("save failed")
+        finally:
+            self._saving = False
 
-        # Power drain: a baseline idle cost, plus more while the motor is
-        # actually working (throttle held, below top speed, and not mid-flip).
-        drain = DRAIN_ENERGY_LOSS
-        if self.flip_remaining == 0.0 and self.up and self.speed < _MAX_SPEED:
-            drain += DRAIN_ACCEL_LOSS
-        self.energy -= drain * dt
+    def shutdown_save(self) -> None:
+        try:
+            self.game.settle_carts()
+            self.store.flush(self.game)
+        except Exception:
+            log.exception("final save failed")
+        self.store.close()
 
-        # Fade any lingering knockback from an earlier bounce, then apply it.
-        self.kx *= _KNOCK_KEEP
-        self.ky *= _KNOCK_KEEP
-        if abs(self.kx) < 1e-3:
-            self.kx = 0.0
-        if abs(self.ky) < 1e-3:
-            self.ky = 0.0
+    # -- the day ends ----------------------------------------------------- #
+    def rollover(self, new_day: str) -> None:
+        """Close out the day: crown the winner, start a fresh world, send everyone back.
 
-        # Combined velocity: steady drive along the heading + knockback drift.
-        fx, fy = math.sin(self.heading), -math.cos(self.heading)
-        vx = fx * self.speed + self.kx
-        vy = fy * self.speed + self.ky
-        mag = math.hypot(vx, vy)
-        if mag > _MAX_SPEED:  # cap the step so we can't skip over a thin wall
-            vx *= _MAX_SPEED / mag
-            vy *= _MAX_SPEED / mag
+        Runs synchronously inside the loop so no request can slip into the old
+        game halfway through. Everyone's cargo is lost: it was never delivered.
+        """
+        old = self.game
+        old.settle_carts()
+        old.refresh_board()
+        winner = old.board[0] if old.board and old.board[0].score > 0 else None
+        self.store.flush(old)
+        if winner is not None:
+            self.store.record_winner(old.day, winner.pid, winner.name, winner.score)
+        self.store.reset_bookkeeping()
+        self.store.prune(new_day)
+        crown = winner.pid if winner else self.store.last_winner_before(new_day)
+        self.game = Game(new_day, crown_pid=crown)
+        note = {
+            "t": "newday",
+            "day": new_day,
+            "winner": {"name": winner.name, "score": winner.score} if winner else None,
+        }
+        links, self.links = self.links, {}
+        for link in links.values():
+            link.push([note], None)
+            link.finish()
 
-        self.bump = 0.0
-        dx, dy = vx * dt, vy * dt
-        if dx or dy:
-            floor = self.world.is_floor
-            if floor(round(self.px + dx), round(self.py + dy)):
-                self.px += dx
-                self.py += dy
-            else:
-                bx = not floor(round(self.px + dx), round(self.py))  # blocked in x
-                by = not floor(round(self.px), round(self.py + dy))  # blocked in y
-                if not bx and not by:  # clipped a diagonal corner
-                    bx = by = True
-                if not bx:  # slide along whichever axis is still open
-                    self.px += dx
-                if not by:
-                    self.py += dy
-                # Kill the into-wall part of the drive, keep the glancing part.
-                total = math.hypot(vx, vy) or 1e-9
-                self.bump = math.hypot(vx if bx else 0.0, vy if by else 0.0)
-                tang = 0.0 if (bx and by) else (abs(vy) if bx else abs(vx))
-                self.speed *= _HIT_SLOW * (tang / total)
-                # Reflect the blocked velocity back out as knockback (next tick).
-                if bx:
-                    self.kx = -vx * _BOUNCE
-                if by:
-                    self.ky = -vy * _BOUNCE
-                self.energy -= HIT_ENERGY_LOSS * self.bump  # harder = costlier
-                self._dirty = True
+    async def run(self) -> None:
+        next_t = time.perf_counter()
+        while True:
+            t0 = time.perf_counter()
+            try:
+                self.step()
+                tick = self.game.tick_count
+                if tick % 20 == 0 and self.day_fn() != self.game.day:
+                    self.rollover(self.day_fn())
+                elif tick % 100 == 0:
+                    task = asyncio.create_task(self.save())
+                    self._tasks.add(task)
+                    task.add_done_callback(self._tasks.discard)
+            except Exception:  # one bad tick must never kill the game
+                log.exception("tick failed")
+            now = time.perf_counter()
+            self.tick_ms.append((now - t0) * 1000.0)
+            next_t += TICK
+            if next_t < now - 1.0:  # badly behind: resync instead of bursting
+                next_t = now
+            await asyncio.sleep(max(0.0, next_t - now))
 
-        self._collect()  # pick up a gem on the current tile (even while parked)
-
-        if self.energy >= 100.0:
-            self.energy = 100.0
-        elif self.energy <= 0.0:  # out of power: end the run
-            self.energy = 0.0
-            self.dead = True
-            self.running = False
-            self.speed = 0.0
-            self.up = self.down = self.left = self.right = False
-            self._dirty = True
-
-    def _collect(self) -> None:
-        """Collect an uncollected gem under the player, once, adding its value."""
-        cell = (round(self.px), round(self.py))
-        if cell in self.collected:
-            return
-        value = self.world.gem_at(*cell)
-        if value is not None:
-            self.collected.add(cell)
-            self.score += value
-            self.energy = min(100.0, self.energy + value * GEM_ENERGY_GAIN)
-            self._dirty = True
-
-    def take_dirty(self) -> bool:
-        was, self._dirty = self._dirty, False
-        return was
-
-    def state(self) -> dict:
-        """A square viewport plus the exact float pose for smooth rotation."""
-        cxi, cyi = round(self.px), round(self.py)
-        x0 = cxi - self.cols // 2
-        y0 = cyi - self.rows // 2
-        tiles = self.world.viewport(x0, y0, self.cols, self.rows)
-
-        # Gem sites visible in this viewport: uncollected ones glow as gems,
-        # collected ones are drawn as leftover rubble by the client.
-        gems = []
-        rubble = []
-        collected = self.collected
-        gem = self.world.gem_on_floor
-        for r, row in enumerate(tiles):
-            wy = y0 + r
-            for c, floor in enumerate(row):
-                if not floor:
-                    continue
-                wx = x0 + c
-                value = gem(wx, wy)
-                if value is None:
-                    continue
-                if (wx, wy) in collected:
-                    rubble.append({"x": wx, "y": wy})
-                else:
-                    gems.append({"x": wx, "y": wy, "v": value})
-
+    def perf(self) -> dict:
+        ms = sorted(self.tick_ms)
+        if not ms:
+            return {"p50": 0.0, "p95": 0.0, "max": 0.0}
         return {
-            "x0": x0,
-            "y0": y0,
-            "cols": self.cols,
-            "rows": self.rows,
-            "tiles": tiles,
-            "gems": gems,
-            "rubble": rubble,
-            "score": self.score,
-            "energy": self.energy,
-            "dead": self.dead,
-            "bump": self.bump,
-            "flipping": self.flip_remaining > 0.0,
-            "player": {
-                "x": self.px,
-                "y": self.py,
-                "heading": self.heading,
-                "speed": self.speed,
-            },
-            "max_speed": _MAX_SPEED,
-            "moving": self.speed > 1e-3,
-            "tick_ms": int(_TICK * 1000),
-            "colors": self.world.palette(math.hypot(self.px, self.py)),
-            "seed": self.world.seed_str,
-            "style": self.style,
+            "p50": round(ms[len(ms) // 2], 2),
+            "p95": round(ms[int(len(ms) * 0.95)], 2),
+            "max": round(ms[-1], 2),
         }
 
 
-app = FastAPI(title="GemBot 9000")
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    hub = Hub()
+    app.state.hub = hub
+    task = asyncio.create_task(hub.run())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        hub.shutdown_save()
+
+
+app = FastAPI(title="GemBot 9000", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 
@@ -315,56 +226,85 @@ async def index() -> str:
     return (_STATIC / "index.html").read_text(encoding="utf-8")
 
 
-async def _reader(sock: WebSocket, session: Session) -> None:
-    """Apply incoming client messages to the session until it disconnects."""
-    while True:
-        msg = await sock.receive_json()
-        action = msg.get("action")
-        if action == "controls":
-            session.set_controls(
-                bool(msg.get("up")),
-                bool(msg.get("down")),
-                bool(msg.get("left")),
-                bool(msg.get("right")),
-            )
-        elif action == "seed":
-            session.regenerate(
-                str(msg.get("seed") or _today()),
-                str(msg.get("style") or session.style),
-            )
-        elif action == "resize":
-            session.resize(
-                int(msg.get("cols", session.cols)), int(msg.get("rows", session.rows))
-            )
-        elif action == "active":
-            session.set_running(bool(msg.get("on")))
-        elif action == "flip":
-            session.request_flip()
-
-
-# Sessions are keyed by a client token so a dropped/reconnected socket (e.g. a
-# brief network blip) resumes the same run instead of respawning at the origin.
-_SESSIONS: dict[str, Session] = {}
+@app.get("/api/status")
+async def status() -> dict:
+    hub: Hub = app.state.hub
+    game = hub.game
+    return {
+        "day": game.day,
+        "online": game.online_count(),
+        "cap": MAX_PLAYERS,
+        "top": game.board_rows(5),
+        "winners": hub.store.winners(5),
+        "perf": hub.perf(),
+    }
 
 
 @app.websocket("/ws")
 async def ws(sock: WebSocket) -> None:
+    hub: Hub = app.state.hub
+    token = sock.query_params.get("token") or ""
     await sock.accept()
-    token = sock.query_params.get("token")
-    session = _SESSIONS.get(token) if token else None
-    if session is None:
-        session = Session()
-        if token:
-            _SESSIONS[token] = session
-    await sock.send_json(session.state())
-    reader = asyncio.create_task(_reader(sock, session))
+    if not 8 <= len(token) <= 64:
+        await sock.close(code=1008)
+        return
+    pid = hashlib.sha256(token.encode()).hexdigest()[:10]
+    link: Link | None = None
+    writer: asyncio.Task | None = None
     try:
-        while not reader.done():
-            session.tick()
-            if session.active() or session.take_dirty():
-                await sock.send_json(session.state())
-            await asyncio.sleep(_TICK)
-    except (WebSocketDisconnect, RuntimeError):
+        # The first message must be {"action": "join", "name": ...}.
+        first = json.loads(await asyncio.wait_for(sock.receive_text(), timeout=10))
+        if not isinstance(first, dict) or first.get("action") != "join":
+            await sock.close(code=1008)
+            return
+        player = hub.game.join(pid, str(first.get("name") or ""))
+        if player is None:
+            await sock.send_text(
+                _dump(
+                    [
+                        {
+                            "t": "full",
+                            "online": hub.game.online_count(),
+                            "cap": MAX_PLAYERS,
+                        }
+                    ]
+                )
+            )
+            await sock.close()
+            return
+        old = hub.links.pop(pid, None)
+        if old is not None:  # same browser opened a second tab: the newer one wins
+            old.push([{"t": "kicked", "why": "replaced"}], None)
+            old.finish()
+        conn = Connection(hub.game, player)
+        link = Link(sock, conn)
+        hub.links[pid] = link
+        link.push([conn.welcome()], None)
+        writer = asyncio.create_task(link.writer())
+
+        window_start, count = time.monotonic(), 0
+        while not link.closing:
+            text = await sock.receive_text()
+            now = time.monotonic()
+            if now - window_start >= 1.0:
+                window_start, count = now, 0
+            count += 1
+            if count > _MAX_MSGS_PER_SEC or len(text) > _MAX_MSG_LEN:
+                continue
+            try:
+                msg = json.loads(text)
+            except ValueError:
+                continue
+            if isinstance(msg, dict):
+                try:
+                    conn.handle(msg)
+                except Exception:  # a bad message must not take the socket down
+                    log.exception("bad client message")
+    except WebSocketDisconnect, RuntimeError, TimeoutError, ValueError:
         pass
     finally:
-        reader.cancel()
+        if link is not None and hub.links.get(pid) is link:
+            del hub.links[pid]
+            hub.game.leave(pid)
+        if writer is not None:
+            writer.cancel()

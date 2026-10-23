@@ -1,0 +1,65 @@
+// Touch steering: hold the left half of the screen to turn left, the right half to
+// turn right, both halves to drive straight, and lift every finger to brake.
+// Buttons drawn on the canvas (hudHit) are excluded, so tapping them never steers.
+
+let touchMode = false;          // becomes true on the first touch (enables brake-on-release)
+let downOnHud = false;          // did the latest touch start on a HUD button? (so a click is a tap)
+const touches = new Map();      // pointerId -> "L" | "R"
+
+function inRect(b, x, y) { return b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; }
+function onHudButton(x, y) {
+    for (const k in hudHit) if (inRect(hudHit[k], x, y)) return true;
+    return false;
+}
+
+function localPoint(e) {
+    const r = canvas.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top, r.width];
+}
+
+function touchControls() {
+    let l = false, r = false;
+    for (const s of touches.values()) { if (s === "L") l = true; else r = true; }
+    if (l || r) return { up: true, down: false, left: l && !r, right: r && !l };
+    return { up: false, down: true, left: false, right: false };      // no finger = brake
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;
+    touchMode = true;
+    const [x, y, w] = localPoint(e);
+    downOnHud = onHudButton(x, y) || !!buildMode;     // in build mode a touch is a tap, not steering
+    if (downOnHud) return;
+    touches.set(e.pointerId, x < w / 2 ? "L" : "R");
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    sendControls();
+});
+canvas.addEventListener("pointermove", (e) => {
+    if (!touches.has(e.pointerId)) return;
+    const [x, , w] = localPoint(e);
+    const side = x < w / 2 ? "L" : "R";
+    if (touches.get(e.pointerId) !== side) { touches.set(e.pointerId, side); sendControls(); }
+});
+function endTouch(e) {
+    if (touches.delete(e.pointerId)) sendControls();
+}
+canvas.addEventListener("pointerup", endTouch);
+canvas.addEventListener("pointercancel", endTouch);
+
+// Keyboard state lives here too so both input methods share one sender.
+const held = { up: false, down: false, left: false, right: false };
+let lastControls = "";
+
+function canSteer() { return G.state === "playing" && !overlayOpen(); }
+
+function sendControls(force) {
+    let c = { up: false, down: false, left: false, right: false };
+    if (canSteer()) {
+        const kb = held.up || held.down || held.left || held.right;
+        c = kb || !touchMode ? Object.assign({}, held) : touchControls();
+    }
+    const s = JSON.stringify(c);
+    if (!force && s === lastControls) return;
+    lastControls = s;
+    send(Object.assign({ action: "controls" }, c));
+}
