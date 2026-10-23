@@ -60,7 +60,7 @@ canvas.addEventListener("pointercancel", (e) => endTouch(e, true));
 const held = { up: false, down: false, left: false, right: false };
 let lastControls = "";
 
-function canSteer() { return G.state === "playing" && !overlayOpen(); }
+function canSteer() { return G.state === "playing" && !overlayOpen() && !travelMode; }   // travel mode parks the robot
 
 function sendControls(force) {
     let c = { up: false, down: false, left: false, right: false };

@@ -106,12 +106,14 @@ function freePort() {
     // (one page call: server ticks are frozen so the injected state is not overwritten)
     const rail = await a.evaluate(async () => {
         const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-        const sent = [], realSend = window.send, realTick = HANDLERS.tick;
-        window.send = (m) => { if (m.action !== "controls") sent.push(m); };   // ignore steering messages
+        const sent = [], steer = [], realSend = window.send, realTick = HANDLERS.tick;
+        window.send = (m) => { (m.action === "controls" ? steer : sent).push(m); };   // steering messages are kept apart
         HANDLERS.tick = () => {};
         const out = {};
         try {
-            G.speed = 0; G.carts.clear(); G.hubs.clear();
+            G.speed = 0; G.carts.clear(); G.hubs.clear(); G.others.clear();   // no other robot near enough to take the taps
+            G.x = 30; G.y = 20; G.h = 0;                // fixed spot, well away from the base (which would count as the parked hub)
+            camFrom = camTo = { x: 30, y: 20, h: 0 };
             const W = canvas.getBoundingClientRect().width, H = canvas.getBoundingClientRect().height;
             const mid = (s) => [(s.ax + s.bx) / 2, (s.ay + s.by) / 2];
             const segsOf = () => railModeSegments(railMode, currentCam(), W / 2, H * ANCHOR_Y);
@@ -184,7 +186,20 @@ function freePort() {
             out.travelOne = tapTrack(0) && sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0;
             sent.length = 0;
             out.travelStays = travelMode === true;      // still on after a tap
-            out.travelSteers = canSteer();            // travel mode never takes over steering
+            // Steering is off in travel mode: a touch or a key must not drive the robot off the hub.
+            out.travelNoSteer = !canSteer();
+            steer.length = 0;
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+            const ts = railModeSegments(travelTargets(), currentCam(), W / 2, H * ANCHOR_Y).find((q) => q.to === 0);
+            const [px, py] = near(ts, 0.7), r0 = canvas.getBoundingClientRect();
+            const touch = (type) => canvas.dispatchEvent(new PointerEvent(type,
+                { pointerId: 31, pointerType: "touch", clientX: r0.left + px, clientY: r0.top + py, bubbles: true }));
+            touch("pointerdown"); touch("pointerup");
+            canvas.dispatchEvent(new MouseEvent("click", { clientX: r0.left + px, clientY: r0.top + py, bubbles: true }));
+            window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowUp", bubbles: true }));
+            out.travelTouchRides = sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0;
+            out.travelNoDrive = !held.up && !steer.some((m) => m.up);
+            sent.length = 0;
             G.hubs.set(2, { id: 2, x: G.x + 10, y: G.y, bn: 3, out: 1 });
             await frames();
             out.travelPick = tapTrack(2) && sent.length === 1 && sent[0].action === "ride" && sent[0].to === 2;
@@ -231,7 +246,9 @@ function freePort() {
         ["travelLabel", "travel mode keeps the Ship and Travel buttons"],
         ["travelOne", "tapping a track in travel mode rides along it"],
         ["travelStays", "travel mode stays on after a ride tap"],
-        ["travelSteers", "steering still works in travel mode"],
+        ["travelNoSteer", "steering is off in travel mode"],
+        ["travelTouchRides", "a touch on a track rides along it"],
+        ["travelNoDrive", "touching or pressing arrows in travel mode never drives the robot"],
         ["travelPick", "with several tracks, tapping one rides along that one"],
         ["travelOutside", "tapping outside every track does nothing and keeps the mode"],
         ["travelToggledOff", "pressing TRAVEL again switches it off"],

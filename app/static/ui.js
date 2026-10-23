@@ -208,13 +208,18 @@ function canShip() {
 }
 
 // -- Travel mode: the TRAVEL button switches it on and off --
+function setTravel(on) {
+    travelMode = on;
+    travelIdle = 0;
+    if (on) releaseKeys();                        // steering is off while travelling: let go of any held keys
+    sendControls(true);
+}
 function toggleTravel() {
-    if (travelMode) { travelMode = false; return; }
+    if (travelMode) { setTravel(false); return; }
     const h = parkedHub();
     if (!h) return;
     if (!hubNeighbours(h.id).length) { toast("No track leads from here.", HUD.amber, 2500); return; }
-    travelMode = true;
-    travelIdle = 0;
+    setTravel(true);
     toast("Travel mode: tap a track to ride along it.", HUD.neon, 3000);
 }
 function canTravel() {
@@ -246,7 +251,7 @@ setInterval(() => {
     if (!travelMode) return;
     if (G.state !== "playing") { travelMode = false; return; }
     if (G.riding || G.showNetwork || parkedHub()) travelIdle = 0;
-    else if (++travelIdle > 8) travelMode = false;
+    else if (++travelIdle > 8) setTravel(false);
 }, 200);
 
 // -- Place a hub: stand still on an empty tile; the map then offers the tracks it could get --
@@ -471,7 +476,9 @@ window.addEventListener("keydown", (e) => {
         return;
     }
     const k = KEYS[e.key];
-    if (k) {
+    if (k && travelMode) {                       // steering is off in travel mode
+        e.preventDefault();
+    } else if (k) {
         e.preventDefault();
         if (!held[k]) { held[k] = true; sendControls(); }
     } else if (e.key === " " || e.code === "Space") {
