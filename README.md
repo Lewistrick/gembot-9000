@@ -125,6 +125,7 @@ ruff check . && ruff format --check .          # lint and format
 uvx ty check                                   # types
 PYTHONPATH=. uv run python scripts/validate.py # generator constraints
 NODE_PATH=/opt/node22/lib/node_modules node scripts/smoke.cjs   # headless-browser smoke test
+scripts/reset-day.sh                           # wipe today's board (backs up the DB first); -n previews, -y skips the prompt
 ```
 
 Docker without compose:
