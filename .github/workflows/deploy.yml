@@ -19,6 +19,8 @@ jobs:
         working-directory: /home/weekmenu/apps/gembot-9000
         run: |
           git fetch origin main
-          git reset --hard origin/main
+          # Switch to main rather than resetting whatever branch is checked out;
+          # this fails (and deploys nothing) if local changes would be overwritten.
+          git checkout -B main origin/main
           docker compose up -d --build
           docker image prune -f
