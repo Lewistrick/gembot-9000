@@ -106,12 +106,14 @@ function freePort() {
     // (one page call: server ticks are frozen so the injected state is not overwritten)
     const rail = await a.evaluate(async () => {
         const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-        const sent = [], realSend = window.send, realTick = HANDLERS.tick;
-        window.send = (m) => { if (m.action !== "controls") sent.push(m); };   // ignore steering messages
+        const sent = [], steer = [], realSend = window.send, realTick = HANDLERS.tick;
+        window.send = (m) => { (m.action === "controls" ? steer : sent).push(m); };   // steering messages are kept apart
         HANDLERS.tick = () => {};
         const out = {};
         try {
-            G.speed = 0; G.carts.clear(); G.hubs.clear();
+            G.speed = 0; G.carts.clear(); G.hubs.clear(); G.others.clear();   // no other robot near enough to take the taps
+            G.x = 30; G.y = 20; G.h = 0;                // fixed spot, well away from the base (which would count as the parked hub)
+            camFrom = camTo = { x: 30, y: 20, h: 0 };
             const W = canvas.getBoundingClientRect().width, H = canvas.getBoundingClientRect().height;
             const mid = (s) => [(s.ax + s.bx) / 2, (s.ay + s.by) / 2];
             const segsOf = () => railModeSegments(railMode, currentCam(), W / 2, H * ANCHOR_Y);
@@ -184,7 +186,20 @@ function freePort() {
             out.travelOne = tapTrack(0) && sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0;
             sent.length = 0;
             out.travelStays = travelMode === true;      // still on after a tap
-            out.travelSteers = canSteer();            // travel mode never takes over steering
+            // Steering is off in travel mode: a touch or a key must not drive the robot off the hub.
+            out.travelNoSteer = !canSteer();
+            steer.length = 0;
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+            const ts = railModeSegments(travelTargets(), currentCam(), W / 2, H * ANCHOR_Y).find((q) => q.to === 0);
+            const [px, py] = near(ts, 0.7), r0 = canvas.getBoundingClientRect();
+            const touch = (type) => canvas.dispatchEvent(new PointerEvent(type,
+                { pointerId: 31, pointerType: "touch", clientX: r0.left + px, clientY: r0.top + py, bubbles: true }));
+            touch("pointerdown"); touch("pointerup");
+            canvas.dispatchEvent(new MouseEvent("click", { clientX: r0.left + px, clientY: r0.top + py, bubbles: true }));
+            window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowUp", bubbles: true }));
+            out.travelTouchRides = sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0;
+            out.travelNoDrive = !held.up && !steer.some((m) => m.up);
+            sent.length = 0;
             G.hubs.set(2, { id: 2, x: G.x + 10, y: G.y, bn: 3, out: 1 });
             await frames();
             out.travelPick = tapTrack(2) && sent.length === 1 && sent[0].action === "ride" && sent[0].to === 2;
@@ -231,7 +246,9 @@ function freePort() {
         ["travelLabel", "travel mode keeps the Ship and Travel buttons"],
         ["travelOne", "tapping a track in travel mode rides along it"],
         ["travelStays", "travel mode stays on after a ride tap"],
-        ["travelSteers", "steering still works in travel mode"],
+        ["travelNoSteer", "steering is off in travel mode"],
+        ["travelTouchRides", "a touch on a track rides along it"],
+        ["travelNoDrive", "touching or pressing arrows in travel mode never drives the robot"],
         ["travelPick", "with several tracks, tapping one rides along that one"],
         ["travelOutside", "tapping outside every track does nothing and keeps the mode"],
         ["travelToggledOff", "pressing TRAVEL again switches it off"],
@@ -345,6 +362,53 @@ function freePort() {
         ["netRefit", "reopening shows the whole network again"],
         ["netEsc", "Escape leaves the network map"],
     ]) check(aids[k] === true, what);
+
+    // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---
+    const light = await a.evaluate(async () => {
+        const frames = (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+        const realTick = HANDLERS.tick, saved = { x: G.x, y: G.y, from: camFrom, to: camTo };
+        HANDLERS.tick = () => {};
+        const out = {};
+        try {
+            G.hubs.clear(); G.toasts.length = 0;
+            const at = (x, y) => { G.x = x; G.y = y; camFrom = camTo = { x, y, h: 0 }; };
+            at(40, 0);
+            await frames(60);
+            out.litNearBase = G.dark === 0 && G.lightD < 50;
+            at(175, 0);                                  // halfway between 100 and 250
+            await frames(60);
+            out.dim = G.dark > 0.45 && G.dark < 0.55;
+            out.noNoticeYet = !G.toasts.some((t) => t.text.includes("pitch dark"));
+            at(260, 0);
+            await frames(90);
+            out.black = G.dark === 1 && G.lightD >= G.light[1];
+            out.pitchNotice = G.toasts.some((t) => t.text.includes("Hubs are required"));
+            G.hubs.set(1, { id: 1, x: 250, y: 0, bn: 2, out: 0 });   // a hub brings the light back
+            await frames(90);
+            out.hubLights = G.dark === 0 && G.toasts.length > 0;
+            // Sent home: the notice explains it, and the camera jumps instead of flying across the map.
+            HANDLERS.lost({ v: 7 });
+            out.lostNotice = G.toasts.some((t) => t.text.includes("lost in the dark") && t.text.includes("7"));
+            HANDLERS.tick = realTick;
+            realTick({ x: 3, y: 4, h: 0, s: 0, c: 1, sc: 0, f: false, r: 0 });
+            const p = robotPose();
+            out.snaps = Math.hypot(p.x - 3, p.y - 4) < 1e-6;
+        } finally {
+            HANDLERS.tick = realTick; G.hubs.clear(); G.dark = 0; G.toasts.length = 0;
+            G.x = saved.x; G.y = saved.y; camFrom = saved.from; camTo = saved.to;
+        }
+        return out;
+    });
+    for (const [k, what] of [
+        ["litNearBase", "no darkness near the base"],
+        ["dim", "halfway between 100 and 250 tiles from a hub the screen is half dark"],
+        ["noNoticeYet", "no darkness notice before it is pitch dark"],
+        ["black", "completely dark at 250 tiles"],
+        ["pitchNotice", "pitch black says hubs are required to provide light"],
+        ["hubLights", "a hub nearby brings the light back"],
+        ["lostNotice", "being sent home shows the lost message"],
+        ["snaps", "the camera jumps when sent back to base"],
+    ]) check(light[k] === true, what);
 
     // --- Tap robots: yours edits your message, someone else's opens their menu ---
     // (done inside one page call: the server's next update would drop an injected robot)

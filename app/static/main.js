@@ -233,6 +233,22 @@ function drawTravelMode(cam, ax, ay, W, H, now) {
     pillText("PRESS TRAVEL AGAIN TO STOP", W / 2, H * 0.2 + tile * 1.1, HUD.dim);
 }
 
+// Light: the robot sees only near a hub (the base is one). Darker from G.light[0] tiles away,
+// pitch black from G.light[1]; the server sends the robot home from G.light[2].
+let wasDark = false, lightAt = 0;
+function updateLight(now) {
+    let d = Math.hypot(G.x, G.y);
+    for (const h of G.hubs.values()) d = Math.min(d, Math.hypot(h.x - G.x, h.y - G.y));
+    G.lightD = d;
+    const [dim, dark] = G.light, want = clamp((d - dim) / (dark - dim), 0, 1);
+    const dt = Math.min(100, now - lightAt);
+    lightAt = now;
+    G.dark = Math.abs(want - G.dark) < 0.002 ? want : G.dark + (want - G.dark) * (1 - Math.exp(-dt / 150));   // eased: a new hub brightens it smoothly
+    const pitch = d >= dark;
+    if (pitch && !wasDark) toast("It is pitch dark here. Hubs are required to provide light!", HUD.amber, 6000);
+    wasDark = pitch;
+}
+
 function draw() {
     requestAnimationFrame(draw);
     const dpr = window.devicePixelRatio || 1;
@@ -266,6 +282,8 @@ function draw() {
     drawCarts(cam, ax, ay, W, H, now, colors);
     robotHits.length = 0;
     drawOthers(cam, ax, ay, W, H, now);
+    updateLight(now);
+    if (G.dark > 0.003) { ctx.fillStyle = `rgba(0,0,0,${G.dark})`; ctx.fillRect(0, 0, W, H); }   // the world goes dark; you, the arrows and the HUD stay
     ctx.save();
     ctx.translate(ax, ay);
     ctx.rotate(cam.rh - cam.h);                // the robot swings off "up" while the map catches up

@@ -27,7 +27,7 @@ import base64
 import json
 import math
 
-from .game import MAX_PLAYERS, Game, Row
+from .game import LIGHT_DARK, LIGHT_DIM, LIGHT_LOST, MAX_PLAYERS, Game, Row
 from .grid import BASE_RADIUS, CHUNK
 from .player import MAX_SPEED, TICK, Player
 from .rail import HUB_COST, MAX_TRACK
@@ -102,6 +102,7 @@ class Connection:
             "tick_ms": int(TICK * 1000),
             "max_speed": MAX_SPEED,
             "base": BASE_RADIUS,
+            "light": [LIGHT_DIM, LIGHT_DARK, LIGHT_LOST],
             "colors": g.world.palette(0.0),
             "mult": g.multiplier,
         }
