@@ -197,17 +197,28 @@ function railModeSegments(mode, cam, ax, ay) {
 function drawRailMode(cam, ax, ay, W, H, now) {
     if (!railMode) return;
     const segs = railModeSegments(railMode, cam, ax, ay);
-    const pulse = 0.5 + 0.5 * Math.sin(now / 280);
     for (const s of segs) {
-        if (railMode.kind === "hub") {
-            ctx.save();
-            ctx.globalAlpha = 0.45;                       // transparent: this is only an offer
-            ART.track(ctx, s.ax, s.ay, s.bx, s.by, tile, 1);
-            ctx.restore();
-            const o = s.opt, mx = (s.ax + s.bx) / 2, my = (s.ay + s.by) / 2;
-            const label = o.short > 0 ? `${o.cost}  (${o.short} from score)` : `${o.cost}`;
-            pillText(label, mx, my, o.short > 0 ? HUD.amber : "#3ef07a");
-        } else {
+        ctx.save();
+        ctx.globalAlpha = 0.45;                           // transparent: this is only an offer
+        ART.track(ctx, s.ax, s.ay, s.bx, s.by, tile, 1);
+        ctx.restore();
+        const o = s.opt, mx = (s.ax + s.bx) / 2, my = (s.ay + s.by) / 2;
+        const label = o.short > 0 ? `${o.cost}  (${o.short} from score)` : `${o.cost}`;
+        pillText(label, mx, my, o.short > 0 ? HUD.amber : "#3ef07a");
+    }
+    ctx.save(); ctx.translate(ax, ay); ctx.rotate(-cam.h);   // the hub that would be built, under your robot
+    ART.hub(ctx, 0, 0, tile, accent(G.me.hue), now, true);
+    ctx.restore();
+    pillText("TAP A TRACK TO BUILD IT", W / 2, H * 0.2, HUD.neon);
+    pillText("TAP ELSEWHERE TO CANCEL", W / 2, H * 0.2 + tile * 1.1, HUD.dim);
+}
+
+// Travel mode: the tracks from the hub you're on glow; tapping one rides you along it.
+function drawTravelMode(cam, ax, ay, W, H, now) {
+    if (!travelMode) return;
+    const mode = travelTargets(), pulse = 0.5 + 0.5 * Math.sin(now / 280);
+    if (mode) {
+        for (const s of railModeSegments(mode, cam, ax, ay)) {
             ctx.save();                                   // a glowing band over the real track
             ctx.lineCap = "round";
             ctx.strokeStyle = `rgba(255,207,77,${0.18 + 0.2 * pulse})`;
@@ -218,13 +229,8 @@ function drawRailMode(cam, ax, ay, W, H, now) {
             pillText(s.toll > 0 ? `toll ${s.toll}` : "free", mx, my, s.toll > 0 ? HUD.amber : "#3ef07a");
         }
     }
-    if (railMode.kind === "hub") {                        // the hub that would be built, under your robot
-        ctx.save(); ctx.translate(ax, ay); ctx.rotate(-cam.h);
-        ART.hub(ctx, 0, 0, tile, accent(G.me.hue), now, true);
-        ctx.restore();
-    }
-    pillText(railMode.kind === "hub" ? "TAP A TRACK TO BUILD IT" : "TAP A TRACK TO TRAVEL", W / 2, H * 0.2, HUD.neon);
-    pillText("TAP ELSEWHERE TO CANCEL", W / 2, H * 0.2 + tile * 1.1, HUD.dim);
+    pillText(G.riding ? "TRAVELLING…" : "TRAVEL MODE: TAP A TRACK", W / 2, H * 0.2, HUD.amber);
+    pillText("PRESS TRAVEL AGAIN TO STOP", W / 2, H * 0.2 + tile * 1.1, HUD.dim);
 }
 
 function draw() {
@@ -270,6 +276,7 @@ function draw() {
     drawRobotLabels(ax, ay, G.meta.get(G.me.num) || { name: G.me.name, chat: "", id: G.me.id }, now);
     drawArrows(cam, ax, ay, now);
     drawRailMode(cam, ax, ay, W, H, now);
+    drawTravelMode(cam, ax, ay, W, H, now);
 
     // Brief red vignette that fades after a wall bump.
     const flash = bumpGlow();

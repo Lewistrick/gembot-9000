@@ -124,13 +124,18 @@ chatInEl.addEventListener("keydown", (e) => {
 // ---- Rail: ship cargo, travel along a track, place a hub, and paying for it ----
 // railMode: null, or the map is waiting for a tap on one of several candidate tracks:
 //   { kind: "hub", x, y, opts: [{ to, x, y, cost, short, ... }] }   (ghost tracks for a new hub)
-//   { kind: "travel", from, choices: [hubId, ...] }                 (tracks to ride along)
 let railMode = null;
+// travelMode: switched on with the TRAVEL button while parked on a hub. From then on a tap on
+// a track from the hub you're on rides you to its other end, hub after hub, until the TRAVEL
+// button is pressed again (it also switches off if you drive away from every hub).
+let travelMode = false;
+let travelIdle = 0;
 let payRetry = null;            // the action to re-send if the player agrees to pay from score
 const payBarEl = $("paybar");
 
 function clearRailUi() {
     railMode = null;
+    travelMode = false;
     payRetry = null;
     payBarEl.classList.add("hidden");
 }
@@ -202,24 +207,47 @@ function canShip() {
     return !!h && h.id !== 0 && G.cargo > 0 && linkedToBase(h.id);
 }
 
-// -- Travel: one track from here goes straight there; several ask you to tap one --
-function doTravel() {
+// -- Travel mode: the TRAVEL button switches it on and off --
+function toggleTravel() {
+    if (travelMode) { travelMode = false; return; }
     const h = parkedHub();
     if (!h) return;
-    const next = hubNeighbours(h.id);
-    if (!next.length) toast("No track leads from here.", HUD.amber, 2500);
-    else if (next.length === 1) send({ action: "ride", to: next[0] });
-    else {
-        releaseKeys();
-        playersEl.classList.add("hidden");
-        railMode = { kind: "travel", from: h.id, choices: next };
-        sendControls(true);
-    }
+    if (!hubNeighbours(h.id).length) { toast("No track leads from here.", HUD.amber, 2500); return; }
+    travelMode = true;
+    travelIdle = 0;
+    toast("Travel mode: tap a track to ride along it.", HUD.neon, 3000);
 }
 function canTravel() {
     const h = parkedHub();
     return !!h && hubNeighbours(h.id).length > 0;
 }
+// The tracks you can ride from the hub you're parked on (null if not parked or travel mode is off).
+function travelTargets() {
+    if (!travelMode) return null;
+    const h = parkedHub();
+    return h ? { kind: "travel", from: h.id, choices: hubNeighbours(h.id) } : null;
+}
+// A tap on one of those tracks rides there. Returns true if it hit one.
+function tapTravelTrack(sx, sy) {
+    const mode = travelTargets();
+    if (!mode) return false;
+    const cam = currentCam(), r = canvas.getBoundingClientRect();
+    let best = null, bd = Math.max(22, tile * 0.8);          // generous: fingers are fat
+    for (const s of railModeSegments(mode, cam, r.width / 2, r.height * ANCHOR_Y)) {
+        const d = distToSegment(sx, sy, s.ax, s.ay, s.bx, s.by);
+        if (d <= bd) { bd = d; best = s; }
+    }
+    if (!best) return false;
+    send({ action: "ride", to: best.to });
+    return true;
+}
+// Travel mode ends by itself if you drive away from the hubs.
+setInterval(() => {
+    if (!travelMode) return;
+    if (G.state !== "playing") { travelMode = false; return; }
+    if (G.riding || parkedHub()) travelIdle = 0;
+    else if (++travelIdle > 8) travelMode = false;
+}, 200);
 
 // -- Place a hub: stand still on an empty tile; the map then offers the tracks it could get --
 function cheapestHub() {              // hub + the shortest track to any hub (rock and rules aside)
@@ -274,8 +302,7 @@ function railTap(sx, sy) {
         if (d <= bd) { bd = d; best = s; }
     }
     if (!best) return;                                       // tapped outside every track: just close
-    if (mode.kind === "hub") send({ action: "build_hub", to: best.to, x: mode.x, y: mode.y });
-    else send({ action: "ride", to: best.to });
+    send({ action: "build_hub", to: best.to, x: mode.x, y: mode.y });
 }
 
 // -- Paying: cargo goes first; the player is asked before banked score is used --
@@ -325,15 +352,21 @@ $("pmClose").addEventListener("click", closePlayerMenu);
 
 // Robots drawn this frame as tap targets (filled by main.js): tap yours to edit your
 // message, tap someone else's to open their menu. Returns true if a robot was hit.
-function tapRobot(x, y) {
+function tapRobot(x, y, scale) {
     let best = null, bd = Infinity;
     for (const r of robotHits) {
         const d = Math.hypot(r.x - x, r.y - y);
-        if (d <= r.r && d < bd) { best = r; bd = d; }
+        if (d <= r.r * (scale || 1) && d < bd) { best = r; bd = d; }
     }
     if (!best) return false;
     if (best.me) openChat(); else openPlayerMenu(best.meta);
     return true;
+}
+
+// A tap on the map: dead-centre on a robot first, then (in travel mode) a track to ride,
+// then anywhere else on a robot. Tracks start under your own robot, hence the order.
+function tapWorld(x, y) {
+    return tapRobot(x, y, 0.5) || tapTravelTrack(x, y) || tapRobot(x, y);
 }
 
 // ---- Main menu ----
@@ -446,7 +479,7 @@ window.addEventListener("keydown", (e) => {
     } else if (e.key === "b" || e.key === "B") {
         e.preventDefault(); if (!e.repeat) requestHubOptions();
     } else if (e.key === "t" || e.key === "T") {
-        e.preventDefault(); if (!e.repeat) doTravel();
+        e.preventDefault(); if (!e.repeat) toggleTravel();
     } else if (e.key === "g" || e.key === "G") {
         e.preventDefault(); if (!e.repeat) doShip();
     } else if (e.key === "Escape") {
@@ -483,10 +516,11 @@ canvas.addEventListener("click", (e) => {
     else if (inRect(hudHit.placeHub, x, y)) requestHubOptions();
     else if (inRect(hudHit.lens, x, y)) toggleView("showArrows", "gembot-arrows");
     else if (inRect(hudHit.minimap, x, y)) toggleView("showMap", "gembot-map");
+    else if (inRect(hudHit.network, x, y)) toggleView("showNetwork", "gembot-net");
     else if (inRect(hudHit.ship, x, y)) doShip();
-    else if (inRect(hudHit.travel, x, y)) doTravel();
+    else if (inRect(hudHit.travel, x, y)) toggleTravel();
     else if (inRect(hudHit.score, x, y)) togglePlayersPanel();
-    else tapRobot(x, y);
+    else tapWorld(x, y);
 });
 
 showScreen(menuEl);

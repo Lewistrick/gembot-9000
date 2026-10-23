@@ -46,10 +46,11 @@ function endTouch(e, cancelled) {
     const d = downAt.get(e.pointerId);
     downAt.delete(e.pointerId);
     if (touches.delete(e.pointerId)) sendControls();
-    // A quick press-and-release on a robot is a tap (edit your message / open their menu).
-    if (!cancelled && d && performance.now() - d.t < 250 && typeof tapRobot === "function") {
+    // A quick press-and-release is a tap: on a robot (edit your message / open their menu),
+    // or on a track while travel mode is on.
+    if (!cancelled && d && performance.now() - d.t < 250 && typeof tapWorld === "function") {
         const [x, y] = localPoint(e);
-        if (Math.hypot(x - d.x, y - d.y) < 12 && canSteer()) tapRobot(x, y);
+        if (Math.hypot(x - d.x, y - d.y) < 12 && canSteer()) tapWorld(x, y);
     }
 }
 canvas.addEventListener("pointerup", (e) => endTouch(e, false));

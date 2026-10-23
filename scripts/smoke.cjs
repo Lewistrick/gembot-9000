@@ -157,25 +157,51 @@ function freePort() {
             $("payYes").click();
             out.payYes = sent.some((m) => m.action === "ride" && m.to === 3 && m.pay_score === true) && payBarEl.classList.contains("hidden");
 
-            // Parked on a hub: only Ship and Travel.
+            // Parked on a hub: only Ship and Travel; TRAVEL switches a mode on until it is pressed again.
             sent.length = 0;
             G.hubs.clear();
             G.hubs.set(1, { id: 1, x: G.x, y: G.y, bn: 2, out: 0 });
             G.cargo = 5; await frames();
             out.onlyShipTravel = !!parkedHub() && !!hudHit.ship && !!hudHit.travel && !hudHit.placeHub && canShip() && canTravel();
-            doTravel();                                  // a single neighbour: go straight there
-            out.travelOne = sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0 && !railMode;
+            const near = (s, f) => [s.ax + (s.bx - s.ax) * f, s.ay + (s.by - s.ay) * f];
+            const click = (b) => canvas.dispatchEvent(new MouseEvent("click",
+                { clientX: canvas.getBoundingClientRect().left + b.x + b.w / 2, clientY: canvas.getBoundingClientRect().top + b.y + b.h / 2, bubbles: true }));
+            const tapTrack = (to) => {
+                const s = railModeSegments(travelTargets(), currentCam(), W / 2, H * ANCHOR_Y).find((q) => q.to === to);
+                if (!s) return false;
+                const [tx, ty] = near(s, 0.7);
+                tapWorld(tx, ty);
+                return true;
+            };
+            out.travelOff = !travelMode && !travelTargets();
             sent.length = 0;
+            tapWorld(W / 2 + 90, H * 0.2);                // not in travel mode: tracks do nothing
+            out.travelIdleTap = sent.length === 0;
+            click(hudHit.travel);                         // switch on
+            out.travelOn = travelMode === true && !!travelTargets();
+            await frames();
+            out.travelLabel = !!hudHit.travel && !!hudHit.ship && !hudHit.placeHub;
+            out.travelOne = tapTrack(0) && sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0;
+            sent.length = 0;
+            out.travelStays = travelMode === true;      // still on after a tap
+            out.travelSteers = canSteer();            // travel mode never takes over steering
             G.hubs.set(2, { id: 2, x: G.x + 10, y: G.y, bn: 3, out: 1 });
             await frames();
-            doTravel();                                  // two neighbours: pick a track
-            out.travelMode = !!railMode && railMode.kind === "travel" && segsOf().length === 2;
-            const ts = segsOf().find((s) => s.to === 2), [tx, ty] = mid(ts);
-            railTap(tx, ty);
-            out.travelPick = sent.length === 1 && sent[0].action === "ride" && sent[0].to === 2 && !railMode;
+            out.travelPick = tapTrack(2) && sent.length === 1 && sent[0].action === "ride" && sent[0].to === 2;
             sent.length = 0;
-            doTravel(); railTap(W - 4, 4);
-            out.travelCloses = !railMode && sent.length === 0;
+            tapWorld(W - 4, 4);                           // outside every track: nothing sent, mode stays on
+            out.travelOutside = sent.length === 0 && travelMode === true;
+            click(hudHit.travel);                         // switch off
+            out.travelToggledOff = !travelMode && !travelTargets();
+            tapTrack(2);
+            out.travelOffNoRide = sent.length === 0;
+            // Travel mode needs a track to ride and a hub to be parked on.
+            G.hubs.clear(); G.hubs.set(1, { id: 1, x: G.x, y: G.y, bn: 2, out: -1 });
+            await frames();
+            toggleTravel();
+            out.travelNoTrack = !travelMode;
+            G.hubs.clear(); G.hubs.set(1, { id: 1, x: G.x, y: G.y, bn: 2, out: 0 });
+            G.cargo = 5; await frames();
             doShip();
             out.ship = sent.length === 1 && sent[0].action === "send_cargo";
             sent.length = 0;
@@ -183,7 +209,7 @@ function freePort() {
             out.shipNeedsCargo = sent.length === 0;
         } finally {
             window.send = realSend; HANDLERS.tick = realTick;
-            railMode = null; G.hubs.clear(); G.cargo = 0; G.score = 0;
+            railMode = null; travelMode = false; G.hubs.clear(); G.cargo = 0; G.score = 0;
         }
         return out;
     });
@@ -199,10 +225,18 @@ function freePort() {
         ["payCancel", "cancelling the dialog pays nothing"],
         ["payYes", "agreeing re-sends the action with pay_score"],
         ["onlyShipTravel", "parked on a hub: only Ship and Travel"],
-        ["travelOne", "Travel with one neighbour goes straight there"],
-        ["travelMode", "Travel with several asks to tap a track"],
-        ["travelPick", "tapping a track travels along it"],
-        ["travelCloses", "tapping outside every track closes the Travel menu"],
+        ["travelOff", "travel mode starts off"],
+        ["travelIdleTap", "tapping the map does nothing while travel mode is off"],
+        ["travelOn", "TRAVEL switches travel mode on"],
+        ["travelLabel", "travel mode keeps the Ship and Travel buttons"],
+        ["travelOne", "tapping a track in travel mode rides along it"],
+        ["travelStays", "travel mode stays on after a ride tap"],
+        ["travelSteers", "steering still works in travel mode"],
+        ["travelPick", "with several tracks, tapping one rides along that one"],
+        ["travelOutside", "tapping outside every track does nothing and keeps the mode"],
+        ["travelToggledOff", "pressing TRAVEL again switches it off"],
+        ["travelOffNoRide", "tracks are inert again once it is off"],
+        ["travelNoTrack", "travel mode refuses a hub with no track"],
         ["ship", "Ship sends the cargo to the base"],
         ["shipNeedsCargo", "Ship does nothing without cargo"],
     ]) check(rail[k] === true, what);
@@ -240,6 +274,14 @@ function freePort() {
         await frames(); await frames();                  // the minimap draws floor, rock, gems and hubs
         click(hudHit.minimap);
         out.mapOff = G.showMap === false;
+        out.netButton = !!hudHit.network && hudHit.network.x > hudHit.minimap.x;
+        G.hubs.set(1, { id: 1, x: 40, y: -10, bn: 2, out: 0 });
+        G.hubs.set(2, { id: 2, x: 70, y: 30, bn: 3, out: 1 });
+        click(hudHit.network);
+        out.netOn = G.showNetwork === true;
+        await frames(); await frames();                  // the whole network, base and you, north up
+        click(hudHit.network);
+        out.netOff = G.showNetwork === false;
         G.hubs.clear();
         return out;
     });
@@ -251,6 +293,9 @@ function freePort() {
         ["arrowsOff", "clicking the lens again hides them"],
         ["mapOn", "the minimap button shows the minimap"],
         ["mapOff", "clicking it again hides the minimap"],
+        ["netButton", "the network button sits next to the minimap button"],
+        ["netOn", "the network button shows the rail network"],
+        ["netOff", "clicking it again hides the network"],
     ]) check(aids[k] === true, what);
 
     // --- Tap robots: yours edits your message, someone else's opens their menu ---
