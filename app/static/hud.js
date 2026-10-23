@@ -243,18 +243,24 @@ function drawIconButton(cx, cy, r, kind, on) {
         ctx.beginPath(); ctx.arc(cx - r * 0.08, cy + r * 0.08, r * 0.1, 0, TAU); ctx.fill();
         ctx.beginPath(); ctx.moveTo(cx + r * 0.42, cy - r * 0.62); ctx.lineTo(cx + r * 0.42, cy - r * 0.18);
         ctx.moveTo(cx + r * 0.2, cy - r * 0.4); ctx.lineTo(cx + r * 0.64, cy - r * 0.4); ctx.stroke();
-    } else if (kind === "rails") {                 // two rails on sleepers: the network map
-        for (let i = -2; i <= 2; i++) {
-            ctx.beginPath(); ctx.moveTo(cx - r * 0.42, cy + i * r * 0.2); ctx.lineTo(cx + r * 0.42, cy + i * r * 0.2);
-            ctx.lineWidth = Math.max(1.5, r * 0.07); ctx.stroke();
-        }
-        ctx.lineWidth = Math.max(2, r * 0.1);
+    } else if (kind === "ship") {                  // a mine cart heaped with gems, rolling to the base
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.46, cy - r * 0.12); ctx.lineTo(cx + r * 0.46, cy - r * 0.12);
+        ctx.lineTo(cx + r * 0.34, cy + r * 0.3); ctx.lineTo(cx - r * 0.34, cy + r * 0.3);
+        ctx.closePath(); ctx.stroke();
+        for (const dx of [-0.22, 0.22]) { ctx.beginPath(); ctx.arc(cx + dx * r, cy + r * 0.46, r * 0.09, 0, TAU); ctx.fill(); }
+        ctx.beginPath();                           // a gem on top
+        ctx.moveTo(cx, cy - r * 0.5); ctx.lineTo(cx + r * 0.16, cy - r * 0.3); ctx.lineTo(cx, cy - r * 0.12);
+        ctx.lineTo(cx - r * 0.16, cy - r * 0.3); ctx.closePath(); ctx.fill();
+    } else {                                       // "travel": arrows along a line, both ways
+        ctx.beginPath(); ctx.moveTo(cx - r * 0.5, cy); ctx.lineTo(cx + r * 0.5, cy); ctx.stroke();
         for (const sgn of [-1, 1]) {
-            ctx.beginPath(); ctx.moveTo(cx + sgn * r * 0.2, cy - r * 0.5); ctx.lineTo(cx + sgn * r * 0.2, cy + r * 0.5); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx + sgn * r * 0.5, cy);
+            ctx.lineTo(cx + sgn * r * 0.26, cy - r * 0.2); ctx.lineTo(cx + sgn * r * 0.26, cy + r * 0.2);
+            ctx.closePath(); ctx.fill();
         }
-    } else {                                       // "track": a line out to a new hub
-        ctx.beginPath(); ctx.moveTo(cx - r * 0.5, cy + r * 0.5); ctx.lineTo(cx + r * 0.15, cy - r * 0.15); ctx.stroke();
-        sq(cx + r * 0.38, cy - r * 0.38, r * 0.24);
+        ctx.beginPath(); ctx.moveTo(cx - r * 0.12, cy + r * 0.4); ctx.lineTo(cx + r * 0.12, cy + r * 0.4); ctx.stroke();
     }
     ctx.restore();
 }
@@ -282,7 +288,7 @@ function drawHUD(cam, W, H) {
     const cLeft = M + topH + M, cRight = W - M - scoreW - M;
     if (cRight - cLeft > S * 0.14) drawCompass(cam, cLeft, M, cRight - cLeft, topH);
 
-    // Bottom centre: [hub / rails]  [about-face]  [build track], thumb-sized on touch.
+    // Bottom centre: [hub | ship]  [about-face]  [travel], thumb-sized on touch.
     const fbR = touch ? Math.max(28, Math.min(46, S * 0.075)) : Math.max(20, Math.min(38, S * 0.05));
     const fbx = W / 2, fby = H - M - fbR, sbR = fbR * 0.78, gap = fbR + sbR + M * 0.6;
     const sby = fby + (fbR - sbR), cap = Math.max(8, S * 0.02);
@@ -290,18 +296,21 @@ function drawHUD(cam, W, H) {
     hudHit.flip = { x: fbx - fbR, y: fby - fbR, w: 2 * fbR, h: 2 * fbR };
     const parked = typeof parkedHub === "function" && parkedHub();
     const box = (cx) => ({ x: cx - sbR, y: sby - sbR, w: 2 * sbR, h: 2 * sbR });
-    hudHit.placeHub = hudHit.rails = hudHit.buildTrack = null;
+    hudHit.placeHub = hudHit.ship = hudHit.travel = null;
     if (parked) {
-        drawIconButton(fbx - gap, sby, sbR, "rails", true);
-        hudHit.rails = box(fbx - gap);
-        text("RAILS", fbx - gap, sby - sbR - 5, cap, HUD.dim, "center", 0);
-        drawIconButton(fbx + gap, sby, sbR, "track", true);
-        hudHit.buildTrack = box(fbx + gap);
-        text("TRACK", fbx + gap, sby - sbR - 5, cap, HUD.dim, "center", 0);
+        // Parked on a hub: the only choices are to ship gems to the base or to travel.
+        const ship = canShip(), go = canTravel();
+        drawIconButton(fbx - gap, sby, sbR, "ship", ship);
+        hudHit.ship = box(fbx - gap);
+        text("SHIP", fbx - gap, sby - sbR - 5, cap, ship ? HUD.neon : HUD.dim, "center", 0);
+        drawIconButton(fbx + gap, sby, sbR, "travel", go);
+        hudHit.travel = box(fbx + gap);
+        text("TRAVEL", fbx + gap, sby - sbR - 5, cap, go ? HUD.neon : HUD.dim, "center", 0);
         const title = typeof hubCaption === "function" ? hubCaption() : "";
         if (title) pillLabel(title, fbx, fby - fbR - cap * 1.9, HUD.amber, cap * 1.15);
-    } else {
-        const can = typeof canPlaceHub === "function" && canPlaceHub();
+    } else if (typeof canAffordHub === "function" && canAffordHub()) {
+        // Only players who could pay for a hub see the button (dimmed until they stop).
+        const can = canPlaceHub();
         drawIconButton(fbx - gap, sby, sbR, "hub", can);
         hudHit.placeHub = box(fbx - gap);
         text("HUB", fbx - gap, sby - sbR - 5, cap, can ? HUD.neon : HUD.dim, "center", 0);

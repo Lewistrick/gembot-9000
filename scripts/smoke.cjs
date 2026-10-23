@@ -102,42 +102,101 @@ function freePort() {
     check(await b.evaluate((id) => blocked.has(id), annId), "B can block Ann (stored locally)");
     check(await a.evaluate(() => blocked.size === 0), "A's block list is unaffected");
 
-    // --- Rail UI: feed the page server-style messages and exercise the panels ---
-    await a.evaluate(() => {
-        HANDLERS.hubs({ list: [[1, 14, 0, 1, 0], [2, 28, 0, 2, 1]] });
-        G.carts.set(1, { from: { x: 10, y: 0, h: 0 }, to: { x: 11, y: 0, h: 0 }, t0: performance.now(), a: 0 });
-        HANDLERS.rail({ ok: true, msg: "Built (-39)" });
-        HANDLERS.toll({ v: 1, from: "Bob" });
-    });
-    await sleep(300);   // let a few frames draw tracks, hubs, the cart and toasts
-    await a.evaluate(() => HANDLERS.net({
-        at: 2, cargo: 5, ship: { toll: 1 },
-        hubs: [
-            { id: 0, x: 0, y: 0, out: null, by: "BASE", bn: 0, toll: 1 },
-            { id: 1, x: 14, y: 0, out: 0, by: "Ann", bn: 1, toll: 1 },
-            { id: 2, x: 28, y: 0, out: 1, by: "Bob", bn: 2, toll: 0 },
-        ],
-    }));
-    check(await a.evaluate(() => !netMapEl.classList.contains("hidden")), "network map opens");
-    check(await a.evaluate(() => canSteer() === false), "steering is off while the map is open");
-    await a.evaluate(() => { const h = nmHits.find((x) => x.id === 1); $("nmCanvas").dispatchEvent(new MouseEvent("click", { clientX: $("nmCanvas").getBoundingClientRect().left + h.px, clientY: $("nmCanvas").getBoundingClientRect().top + h.py, bubbles: true })); });
-    check(await a.evaluate(() => nmSel === 1 && !$("nmRide").disabled), "tapping a hub selects it and enables Ride");
-    check(await a.evaluate(() => !$("nmShip").disabled && !$("nmBase").disabled), "ship and ride-to-base are offered");
-    await a.keyboard.press("Escape");
-    check(await a.evaluate(() => netMapEl.classList.contains("hidden")), "Escape closes the map");
+    // --- Rail UI: ship/travel on a hub, place-hub with ghost tracks, and the pay dialog ---
+    // (one page call: server ticks are frozen so the injected state is not overwritten)
+    const rail = await a.evaluate(async () => {
+        const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const sent = [], realSend = window.send, realTick = HANDLERS.tick;
+        window.send = (m) => { if (m.action !== "controls") sent.push(m); };   // ignore steering messages
+        HANDLERS.tick = () => {};
+        const out = {};
+        try {
+            G.speed = 0; G.carts.clear(); G.hubs.clear();
+            const W = canvas.getBoundingClientRect().width, H = canvas.getBoundingClientRect().height;
+            const mid = (s) => [(s.ax + s.bx) / 2, (s.ay + s.by) / 2];
+            const segsOf = () => railModeSegments(railMode, currentCam(), W / 2, H * ANCHOR_Y);
 
-    await a.evaluate(() => {   // build mode with a fake preview
-        buildMode = { target: { x: 40, y: 0 }, preview: null };
-        onQuote({ ok: true, why: "", cost: 39, x: 40, y: 0, from: [28, 0], new: true, len: 12 });
+            // The HUB button is only shown to players who could pay for a hub.
+            G.cargo = 0; G.score = 0; await frames();
+            out.hiddenWhenBroke = !canAffordHub() && !hudHit.placeHub;
+            G.cargo = 0; G.score = 500; await frames();
+            out.shownWhenRich = canAffordHub() && !!hudHit.placeHub && canPlaceHub();
+
+            // Place hub: ghost tracks, a tap on one builds it, a tap elsewhere just closes.
+            const gx = Math.round(G.x), gy = Math.round(G.y);
+            HANDLERS.hubopts({ x: gx, y: gy, opts: [
+                { to: 0, x: 0, y: 0, cost: 40, short: 40, len: 15, linked: true },
+                { to: 1, x: gx + 12, y: gy, cost: 37, short: 0, len: 12, linked: true }] });
+            G.hubs.set(1, { id: 1, x: gx + 12, y: gy, bn: 2, out: 0 });
+            await frames();
+            out.hubMode = !!railMode && railMode.kind === "hub" && overlayOpen() && !canSteer();
+            const hs = segsOf();
+            out.hubSegs = hs.length === 2;
+            const [mx, my] = mid(hs.find((s) => s.to === 1));
+            railTap(mx, my + 1);
+            out.hubBuilt = sent.some((m) => m.action === "build_hub" && m.to === 1 && m.x === gx && m.y === gy) && !railMode;
+            sent.length = 0;
+            HANDLERS.hubopts({ x: gx, y: gy, opts: [{ to: 0, x: 0, y: 0, cost: 40, short: 0, len: 15, linked: true }] });
+            railTap(W - 4, 4);
+            out.hubCloses = !railMode && sent.length === 0;
+
+            // The pay dialog: the player must agree before score is used.
+            HANDLERS.pay({ label: "Build a hub and track", cost: 45, cargo: 30, score: 15, retry: { action: "build_hub", to: 0, x: 1, y: 2 } });
+            out.payOpen = !payBarEl.classList.contains("hidden") && overlayOpen() && $("payText").textContent.includes("15");
+            $("payNo").click();
+            out.payCancel = payBarEl.classList.contains("hidden") && sent.length === 0;
+            HANDLERS.pay({ label: "Travel tolls", cost: 2, cargo: 0, score: 2, retry: { action: "ride", to: 3 } });
+            $("payYes").click();
+            out.payYes = sent.some((m) => m.action === "ride" && m.to === 3 && m.pay_score === true) && payBarEl.classList.contains("hidden");
+
+            // Parked on a hub: only Ship and Travel.
+            sent.length = 0;
+            G.hubs.clear();
+            G.hubs.set(1, { id: 1, x: G.x, y: G.y, bn: 2, out: 0 });
+            G.cargo = 5; await frames();
+            out.onlyShipTravel = !!parkedHub() && !!hudHit.ship && !!hudHit.travel && !hudHit.placeHub && canShip() && canTravel();
+            doTravel();                                  // a single neighbour: go straight there
+            out.travelOne = sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0 && !railMode;
+            sent.length = 0;
+            G.hubs.set(2, { id: 2, x: G.x + 10, y: G.y, bn: 3, out: 1 });
+            await frames();
+            doTravel();                                  // two neighbours: pick a track
+            out.travelMode = !!railMode && railMode.kind === "travel" && segsOf().length === 2;
+            const ts = segsOf().find((s) => s.to === 2), [tx, ty] = mid(ts);
+            railTap(tx, ty);
+            out.travelPick = sent.length === 1 && sent[0].action === "ride" && sent[0].to === 2 && !railMode;
+            sent.length = 0;
+            doTravel(); railTap(W - 4, 4);
+            out.travelCloses = !railMode && sent.length === 0;
+            doShip();
+            out.ship = sent.length === 1 && sent[0].action === "send_cargo";
+            sent.length = 0;
+            G.cargo = 0; doShip();
+            out.shipNeedsCargo = sent.length === 0;
+        } finally {
+            window.send = realSend; HANDLERS.tick = realTick;
+            railMode = null; G.hubs.clear(); G.cargo = 0; G.score = 0;
+        }
+        return out;
     });
-    await sleep(200);
-    check(await a.evaluate(() => !$("buildOk").disabled && overlayOpen()), "a good quote enables Build");
-    await a.evaluate(() => onQuote({ ok: false, why: "Rock in the way", cost: 0, x: 40, y: 0, from: [28, 0], new: true, len: 12 }));
-    await sleep(200);
-    check(await a.evaluate(() => $("buildOk").disabled), "a refused quote disables Build");
-    await a.evaluate(() => endBuildMode());
-    check(await a.evaluate(() => !buildMode && !overlayOpen()), "build mode ends cleanly");
-    await a.evaluate(() => { G.hubs.clear(); G.carts.clear(); });
+    for (const [k, what] of [
+        ["hiddenWhenBroke", "no HUB button when the player can't pay for a hub"],
+        ["shownWhenRich", "the HUB button shows when the player can pay"],
+        ["hubMode", "HUB opens a mode that stops steering"],
+        ["hubSegs", "HUB offers each candidate as a track"],
+        ["hubBuilt", "tapping a ghost track builds that one"],
+        ["hubCloses", "tapping outside every track closes the HUB menu"],
+        ["payOpen", "a pay request opens the dialog with the missing amount"],
+        ["payCancel", "cancelling the dialog pays nothing"],
+        ["payYes", "agreeing re-sends the action with pay_score"],
+        ["onlyShipTravel", "parked on a hub: only Ship and Travel"],
+        ["travelOne", "Travel with one neighbour goes straight there"],
+        ["travelMode", "Travel with several asks to tap a track"],
+        ["travelPick", "tapping a track travels along it"],
+        ["travelCloses", "tapping outside every track closes the Travel menu"],
+        ["ship", "Ship sends the cargo to the base"],
+        ["shipNeedsCargo", "Ship does nothing without cargo"],
+    ]) check(rail[k] === true, what);
 
     // --- Drilling: tiles become floor, rubble and sparks draw without errors ---
     await a.evaluate(() => {
@@ -160,6 +219,7 @@ function freePort() {
         HANDLERS.tick = () => {};     // freeze server updates so they can't drop the injected robot
         G.others.set(77, { from: { x: G.x + 2, y: G.y, h: 0 }, to: { x: G.x + 2, y: G.y, h: 0 }, t0: performance.now(), f: 0 });
         G.meta.set(77, { n: 77, id: "zed-id", name: "Zed", chat: "yo", hue: 200 });
+        G.score = 500;                // enough to pay for a hub, so the HUB button is shown
         const find = () => [robotHits.find((r) => r.meta && r.meta.name === "Zed"), robotHits.find((r) => r.me)];
         for (let i = 0; i < 40 && !(find()[0] && find()[1]); i++) await frames();   // wait for a frame that drew both
         const out = {};
@@ -177,6 +237,7 @@ function freePort() {
         out.editor = !chatBarEl.classList.contains("hidden");
         closeChat();
         G.others.delete(77); G.meta.delete(77); blocked.delete("zed-id");
+        G.score = 0;
         HANDLERS.tick = realTick;
         return out;
     });

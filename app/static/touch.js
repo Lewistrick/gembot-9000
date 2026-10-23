@@ -29,7 +29,7 @@ canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse") return;
     touchMode = true;
     const [x, y, w] = localPoint(e);
-    downOnHud = onHudButton(x, y) || !!buildMode;     // in build mode a touch is a tap, not steering
+    downOnHud = onHudButton(x, y) || !!railMode;      // while picking a track a touch is a tap, not steering
     if (downOnHud) return;
     touches.set(e.pointerId, x < w / 2 ? "L" : "R");
     downAt.set(e.pointerId, { x, y, t: performance.now() });

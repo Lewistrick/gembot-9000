@@ -129,32 +129,63 @@ function pillText(str, x, y, color) {
     text(str, x, y + fs * 0.35, fs, color, "center", 0);
 }
 
-// While laying a track: the tapped spot, the straight line to it, and what it costs.
-function drawBuildPreview(cam, ax, ay, now) {
-    if (!buildMode) return;
-    const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h);
-    const q = buildMode.preview, t = q || buildMode.target;
-    if (!t) return;
-    const b = screenPos(t.x, t.y, cam, cosr, sinr, ax, ay);
-    if (q) {
-        const a = screenPos(q.from[0], q.from[1], cam, cosr, sinr, ax, ay);
-        const col = q.ok ? "rgba(62,240,122,0.95)" : "rgba(255,90,77,0.95)";
-        ctx.save();
-        ctx.setLineDash([10, 8]); ctx.lineWidth = 4; ctx.strokeStyle = col;
-        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-        ctx.restore();
-        if (q.new) {
-            ctx.save(); ctx.translate(b[0], b[1]); ctx.rotate(-cam.h);
-            ART.hub(ctx, 0, 0, tile, accent(G.me.hue), now, true);
-            ctx.restore();
+// ---- Rail modes: ghost tracks for a new hub, or tracks you can ride along ----
+// The candidate tracks as screen-space segments (shared with the tap handling in ui.js).
+function railModeSegments(mode, cam, ax, ay) {
+    const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h), segs = [];
+    const sp = (x, y) => screenPos(x, y, cam, cosr, sinr, ax, ay);
+    if (!mode) return segs;
+    if (mode.kind === "hub") {
+        const a = sp(mode.x, mode.y);
+        for (const o of mode.opts) {
+            const b = sp(o.x, o.y);
+            segs.push({ to: o.to, ax: a[0], ay: a[1], bx: b[0], by: b[1], opt: o });
         }
-        pillText(q.ok ? `-${q.cost}  (tap again to build)` : q.why, b[0], b[1] - tile * 1.2, q.ok ? "#3ef07a" : "#ff6b5e");
     } else {
-        ctx.save();
-        ctx.strokeStyle = HUD.amber; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(b[0], b[1], tile * 0.45, 0, TAU); ctx.stroke();
+        const from = hubPos(mode.from);
+        if (!from) return segs;
+        const a = sp(from[0], from[1]);
+        for (const id of mode.choices) {
+            const p = hubPos(id);
+            if (!p) continue;
+            const b = sp(p[0], p[1]);
+            segs.push({ to: id, ax: a[0], ay: a[1], bx: b[0], by: b[1], toll: hopToll(mode.from, id) });
+        }
+    }
+    return segs;
+}
+
+function drawRailMode(cam, ax, ay, W, H, now) {
+    if (!railMode) return;
+    const segs = railModeSegments(railMode, cam, ax, ay);
+    const pulse = 0.5 + 0.5 * Math.sin(now / 280);
+    for (const s of segs) {
+        if (railMode.kind === "hub") {
+            ctx.save();
+            ctx.globalAlpha = 0.45;                       // transparent: this is only an offer
+            ART.track(ctx, s.ax, s.ay, s.bx, s.by, tile, 1);
+            ctx.restore();
+            const o = s.opt, mx = (s.ax + s.bx) / 2, my = (s.ay + s.by) / 2;
+            const label = o.short > 0 ? `${o.cost}  (${o.short} from score)` : `${o.cost}`;
+            pillText(label, mx, my, o.short > 0 ? HUD.amber : "#3ef07a");
+        } else {
+            ctx.save();                                   // a glowing band over the real track
+            ctx.lineCap = "round";
+            ctx.strokeStyle = `rgba(255,207,77,${0.18 + 0.2 * pulse})`;
+            ctx.lineWidth = tile * 0.95;
+            ctx.beginPath(); ctx.moveTo(s.ax, s.ay); ctx.lineTo(s.bx, s.by); ctx.stroke();
+            ctx.restore();
+            const mx = (s.ax + s.bx) / 2, my = (s.ay + s.by) / 2;
+            pillText(s.toll > 0 ? `toll ${s.toll}` : "free", mx, my, s.toll > 0 ? HUD.amber : "#3ef07a");
+        }
+    }
+    if (railMode.kind === "hub") {                        // the hub that would be built, under your robot
+        ctx.save(); ctx.translate(ax, ay); ctx.rotate(-cam.h);
+        ART.hub(ctx, 0, 0, tile, accent(G.me.hue), now, true);
         ctx.restore();
     }
+    pillText(railMode.kind === "hub" ? "TAP A TRACK TO BUILD IT" : "TAP A TRACK TO TRAVEL", W / 2, H * 0.2, HUD.neon);
+    pillText("TAP ELSEWHERE TO CANCEL", W / 2, H * 0.2 + tile * 1.1, HUD.dim);
 }
 
 function draw() {
@@ -198,7 +229,7 @@ function draw() {
     drawMyDrill(ax, ay, now, cam.rh - cam.h);
     robotHits.push({ x: ax, y: ay, r: tile * 0.75, me: true });
     drawRobotLabels(ax, ay, G.meta.get(G.me.num) || { name: G.me.name, chat: "", id: G.me.id }, now);
-    drawBuildPreview(cam, ax, ay, now);
+    drawRailMode(cam, ax, ay, W, H, now);
 
     // Brief red vignette that fades after a wall bump.
     const flash = bumpGlow();

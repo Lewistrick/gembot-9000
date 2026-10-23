@@ -29,6 +29,9 @@ def test_welcome_describes_the_world() -> None:
     w = ca.welcome()
     assert w["t"] == "welcome" and w["day"] == "2026-10-22"
     assert w["chunk"] == CHUNK and w["base"] == BASE_RADIUS and w["cap"] == 100
+    assert (
+        w["hub_cost"] == 25 and w["max_track"] == 60
+    )  # the client prices hubs with these
     assert w["you"]["id"] == "a" and w["you"]["hue"] == hue_for(1)
 
 
@@ -193,4 +196,6 @@ def test_hub_placement_messages_reach_the_game() -> None:
     ca.handle({"action": "build_hub", "to": 0})
     assert len(game.rail.hubs) == 1
     ca.handle({"action": "build_hub", "to": 0, "x": 30, "y": 0})
+    assert len(game.rail.hubs) == 1 and of(ca.frame([0])[0], "pay")  # asks first
+    ca.handle({"action": "build_hub", "to": 0, "x": 30, "y": 0, "pay_score": True})
     assert len(game.rail.hubs) == 2 and game.rail.hubs[1].out == 0

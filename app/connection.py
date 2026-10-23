@@ -14,6 +14,7 @@ Messages, server -> client (``t`` is the type):
 * ``drilled`` wall tiles drilled out since the last message (now floor, for everyone)
 * ``meta``     name / chat / hue for robots that just came into view or changed
 * ``tick``     your pose, cargo and score; every other tick also nearby robots
+* ``pay``      cargo can't cover a cost: ask before paying the rest from banked score
 * ``hubs``     rail hubs (all of them on join, then any new or re-linked ones)
 * ``board``    top of the daily leaderboard, your rank, online count, palette
 * ``announce`` game-wide text; ``gain`` / ``delivered`` / ``warn`` / ``kicked``
@@ -29,6 +30,7 @@ import math
 from .game import MAX_PLAYERS, Game, Row
 from .grid import BASE_RADIUS, CHUNK
 from .player import MAX_SPEED, TICK, Player
+from .rail import HUB_COST, MAX_TRACK
 
 VIEW_MIN = 9
 VIEW_MAX = 81  # tiles; caps how much of the world a client can ask for
@@ -95,6 +97,8 @@ class Connection:
             "day": g.day,
             "chunk": CHUNK,
             "cap": MAX_PLAYERS,
+            "hub_cost": HUB_COST,
+            "max_track": MAX_TRACK,
             "tick_ms": int(TICK * 1000),
             "max_speed": MAX_SPEED,
             "base": BASE_RADIUS,
@@ -133,7 +137,7 @@ class Connection:
             to, x, y = _int(msg, "to"), _int(msg, "x"), _int(msg, "y")
             if to is None or x is None or y is None:
                 return
-            g.build_hub(pid, to, x, y)
+            g.build_hub(pid, to, x, y, _flag(msg, "pay_score"))
         elif action == "build_track":
             x, y = _int(msg, "x"), _int(msg, "y")
             if x is None or y is None:
@@ -144,7 +148,7 @@ class Connection:
         elif action == "ride":
             to = _int(msg, "to")
             if to is not None:
-                g.ride(pid, to)
+                g.ride(pid, to, _flag(msg, "pay_score"))
         elif action == "send_cargo":
             g.send_cargo(pid)
 

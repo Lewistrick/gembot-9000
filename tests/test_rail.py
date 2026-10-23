@@ -212,3 +212,14 @@ def test_restore_rebuilds_hubs_and_ids() -> None:
     net.restore([(1, 14, 0, "a", 0), (3, 28, 0, "b", 1)])
     assert net.route(3, 0) == [3, 1, 0]
     assert net.next_id == 4
+
+
+def test_neighbours_are_the_hubs_one_track_away(world: Open) -> None:
+    net = Network()
+    a = build(net, world, 0, 14, 0)  # a -> base
+    b = build(net, world, a, 28, 0)  # b -> a
+    c = build(net, world, a, 14, 14)  # c -> a
+    assert set(net.neighbours(0)) == {a}
+    assert set(net.neighbours(a)) == {0, b, c}  # the way home and both branches
+    assert net.neighbours(b) == [a] and net.neighbours(c) == [a]
+    assert net.neighbours(a)[0] in (0, b, c)  # nearest first: all 14 tiles away
