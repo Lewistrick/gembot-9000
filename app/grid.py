@@ -30,6 +30,7 @@ import hashlib
 import math
 import threading
 from collections import OrderedDict
+from typing import Protocol
 
 import numpy as np
 
@@ -100,6 +101,13 @@ _MASK: int = (1 << 64) - 1
 # --------------------------------------------------------------------------- #
 # Hashing / deterministic randomness
 # --------------------------------------------------------------------------- #
+class FloorMap(Protocol):
+    """Anything that can say whether a tile is walkable (the world, or the game
+    with its drilled tiles on top of the world)."""
+
+    def is_floor(self, x: int, y: int) -> bool: ...
+
+
 def _mix64(x: int) -> int:
     """Splitmix64 finaliser: scramble a 64-bit integer into a well-mixed one."""
     x = (x + 0x9E3779B97F4A7C15) & _MASK

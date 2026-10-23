@@ -16,7 +16,7 @@ Pure logic with no knowledge of players or sockets (``game.py`` wires it in).
 import math
 from dataclasses import dataclass
 
-from .grid import BASE_RADIUS, World
+from .grid import BASE_RADIUS, FloorMap
 
 HUB_COST = 25
 MAX_TRACK = 60  # longest single track, in tiles
@@ -160,7 +160,7 @@ class Network:
         ]
 
     # -- placement rules ---------------------------------------------------- #
-    def _hub_site_problem(self, world: World, x: int, y: int) -> str:
+    def _hub_site_problem(self, world: FloorMap, x: int, y: int) -> str:
         if len(self.hubs) > MAX_HUBS:
             return "The mine is full of hubs."
         if not world.is_floor(x, y):
@@ -173,7 +173,7 @@ class Network:
         return ""
 
     def hub_options(
-        self, world: World, x: int, y: int, score: int
+        self, world: FloorMap, x: int, y: int, score: int
     ) -> tuple[list[Quote], str]:
         """Where a new hub on cell ``(x, y)`` could lead, nearest first.
 
@@ -203,7 +203,7 @@ class Network:
         return [], "Rock blocks the way to every hub in reach."
 
     def quote_track(
-        self, world: World, src: int, tx: int, ty: int, score: int
+        self, world: FloorMap, src: int, tx: int, ty: int, score: int
     ) -> Quote:
         """A straight track from hub ``src`` to the target cell.
 
