@@ -277,11 +277,50 @@ function freePort() {
         out.netButton = !!hudHit.network && hudHit.network.x > hudHit.minimap.x;
         G.hubs.set(1, { id: 1, x: 40, y: -10, bn: 2, out: 0 });
         G.hubs.set(2, { id: 2, x: 70, y: 30, bn: 3, out: 1 });
+        const realTick = HANDLERS.tick;
+        HANDLERS.tick = () => {};
+        const ptr = (type, id, x, y, kind = "mouse") => canvas.dispatchEvent(new PointerEvent(type,
+            { pointerId: id, pointerType: kind, clientX: rect.left + x, clientY: rect.top + y, bubbles: true }));
+        const W = rect.width, H = rect.height;
         click(hudHit.network);
-        out.netOn = G.showNetwork === true;
-        await frames(); await frames();                  // the whole network, base and you, north up
+        out.netOn = G.showNetwork === true && overlayOpen() && !canSteer();
+        await frames(); await frames();                  // fullscreen, north up, base and you marked
+        out.netCross = !!hudHit.netClose && !hudHit.hamburger && !hudHit.minimap && hudHit.netClose.x > W / 2;
+        const fit = netView.sc, c0 = [netView.cx, netView.cy];
+        // Scroll zooms about the pointer: the world point under it stays put.
+        const wx = netView.cx + (W * 0.7 - W / 2) / netView.sc, wy = netView.cy + (H * 0.3 - H / 2) / netView.sc;
+        canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: -300, clientX: rect.left + W * 0.7, clientY: rect.top + H * 0.3, bubbles: true, cancelable: true }));
+        out.netZoomIn = netView.sc > fit * 1.3;
+        out.netZoomAnchored = Math.abs(netView.cx + (W * 0.7 - W / 2) / netView.sc - wx) < 0.01
+            && Math.abs(netView.cy + (H * 0.3 - H / 2) / netView.sc - wy) < 0.01;
+        canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 100000, clientX: rect.left + W / 2, clientY: rect.top + H / 2, bubbles: true, cancelable: true }));
+        out.netZoomLimit = netView.sc >= fit * 0.5 - 1e-9 && netView.sc < fit;
+        // Drag pans: the map follows the finger.
+        const before = [netView.cx, netView.cy];
+        ptr("pointerdown", 5, 300, 300); ptr("pointermove", 5, 340, 320); ptr("pointerup", 5, 340, 320);
+        out.netPan = netView.cx < before[0] && netView.cy < before[1];
+        // Pinch: two fingers moving apart zoom in.
+        const s0 = netView.sc;
+        ptr("pointerdown", 6, 300, 300, "touch"); ptr("pointerdown", 7, 400, 300, "touch");
+        ptr("pointermove", 7, 500, 300, "touch");
+        ptr("pointerup", 6, 300, 300, "touch"); ptr("pointerup", 7, 500, 300, "touch");
+        out.netPinch = netView.sc > s0 * 1.5;
+        await frames();
+        // A drag that ends on the cross does not close the map; a plain click on it does.
+        const cr = hudHit.netClose, mid = [cr.x + cr.w / 2, cr.y + cr.h / 2];
+        ptr("pointerdown", 8, 300, 300); ptr("pointermove", 8, mid[0], mid[1]); ptr("pointerup", 8, mid[0], mid[1]);
+        click(cr);
+        out.netDragNoClose = G.showNetwork === true;
+        ptr("pointerdown", 9, mid[0], mid[1]); ptr("pointerup", 9, mid[0], mid[1]);
+        click(cr);
+        out.netOff = G.showNetwork === false && !overlayOpen();
+        // Reopening starts from the whole network again; Esc also leaves.
+        await frames();
         click(hudHit.network);
-        out.netOff = G.showNetwork === false;
+        out.netRefit = G.showNetwork === true && Math.abs(netView.sc - fit) < 1e-6 && Math.abs(netView.cx - c0[0]) < 1e-6;
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        out.netEsc = G.showNetwork === false;
+        HANDLERS.tick = realTick;
         G.hubs.clear();
         return out;
     });
@@ -294,8 +333,17 @@ function freePort() {
         ["mapOn", "the minimap button shows the minimap"],
         ["mapOff", "clicking it again hides the minimap"],
         ["netButton", "the network button sits next to the minimap button"],
-        ["netOn", "the network button shows the rail network"],
-        ["netOff", "clicking it again hides the network"],
+        ["netOn", "the network button opens a fullscreen map that stops steering"],
+        ["netCross", "the map has a cross and covers the other buttons"],
+        ["netZoomIn", "scrolling up zooms in"],
+        ["netZoomAnchored", "zoom keeps the point under the pointer in place"],
+        ["netZoomLimit", "zooming out stops at half the fitted scale"],
+        ["netPan", "dragging pans the map"],
+        ["netPinch", "pinching zooms"],
+        ["netDragNoClose", "a drag ending on the cross doesn't close the map"],
+        ["netOff", "the cross leaves the network map"],
+        ["netRefit", "reopening shows the whole network again"],
+        ["netEsc", "Escape leaves the network map"],
     ]) check(aids[k] === true, what);
 
     // --- Tap robots: yours edits your message, someone else's opens their menu ---

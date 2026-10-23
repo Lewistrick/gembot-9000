@@ -27,7 +27,7 @@ const G = {
     riding: false,
     showArrows: false,         // lens: arrows to the base, nearest gem and nearest hub
     showMap: false,            // minimap around the player
-    showNetwork: false,        // the whole rail network, north up
+    showNetwork: false,        // the fullscreen rail network, north up (never remembered across loads)
     toasts: [],                // { text, color, t0, dur }
     idleUntil: 0,              // performance.now() deadline of the idle warning, or 0
 };
@@ -51,7 +51,6 @@ if (!token) {
 try {
     G.showArrows = localStorage.getItem("gembot-arrows") === "1";
     G.showMap = localStorage.getItem("gembot-map") === "1";
-    G.showNetwork = localStorage.getItem("gembot-net") === "1";
 } catch (e) { /* storage blocked */ }
 
 function curColors() { return G.pal || G.colors || DEFAULT_COLORS; }
@@ -114,7 +113,7 @@ function otherPos(o, now) {
 // ---- Connecting ----
 function resetClientWorld() {
     clearWorld();
-    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.hubs.clear(); G.carts.clear(); G.riding = false;
+    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showNetwork = false;
     if (typeof clearRailUi === "function") clearRailUi();
     G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
     haveCam = false;

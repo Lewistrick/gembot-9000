@@ -181,6 +181,10 @@ function drawSquareButton(x, y, s, kind, on) {
     if (kind === "lens") {                         // a magnifying glass
         ctx.beginPath(); ctx.arc(cx - s * 0.05, cy - s * 0.05, s * 0.2, 0, TAU); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx + s * 0.1, cy + s * 0.1); ctx.lineTo(cx + s * 0.3, cy + s * 0.3); ctx.stroke();
+    } else if (kind === "close") {                 // a cross
+        ctx.beginPath();
+        ctx.moveTo(cx - s * 0.22, cy - s * 0.22); ctx.lineTo(cx + s * 0.22, cy + s * 0.22);
+        ctx.moveTo(cx + s * 0.22, cy - s * 0.22); ctx.lineTo(cx - s * 0.22, cy + s * 0.22); ctx.stroke();
     } else if (kind === "network") {               // the rail network: linked nodes
         const nodes = [[-0.26, 0.2], [0.02, -0.24], [0.28, 0.18]];
         ctx.lineWidth = Math.max(1.5, s * 0.05);
@@ -259,71 +263,102 @@ function drawMinimap(cam, x, y, size) {
     ctx.stroke(); ctx.shadowBlur = 0;
 }
 
-// The whole rail network, north up: every hub and track, the base and where you are.
-function drawNetworkMap(x, y, size) {
-    const colors = curColors();
-    // Bounds of everything that matters: the base, you and every hub.
+// ---- The network screen: the whole rail network, fullscreen and north up, with pan and zoom ----
+const netView = { cx: 0, cy: 0, sc: 1 };       // world point at the screen centre, and px per tile
+const NET_MAX_SCALE = 40;
+
+function networkBounds() {                      // everything that matters: the base, you and every hub
     let x0 = Math.min(0, G.x), x1 = Math.max(0, G.x), y0 = Math.min(0, G.y), y1 = Math.max(0, G.y);
     for (const h of G.hubs.values()) { x0 = Math.min(x0, h.x); x1 = Math.max(x1, h.x); y0 = Math.min(y0, h.y); y1 = Math.max(y1, h.y); }
-    const pad = size * 0.14, inner = size - 2 * pad;
-    const sc = Math.min(inner / Math.max(12, x1 - x0), inner / Math.max(12, y1 - y0), 9);   // px per tile
-    const ox = x + size / 2 - ((x0 + x1) / 2) * sc, oy = y + size / 2 - ((y0 + y1) / 2) * sc;
-    const at = (wx, wy) => [ox + wx * sc, oy + wy * sc];
+    return [x0, y0, x1, y1];
+}
+function networkFitScale(W, H) {                // the scale at which all of it fits on screen
+    const [x0, y0, x1, y1] = networkBounds(), pad = Math.min(W, H) * 0.16;
+    return Math.min((W - 2 * pad) / Math.max(12, x1 - x0), (H - 2 * pad) / Math.max(12, y1 - y0));
+}
+function fitNetwork(W, H) {
+    const [x0, y0, x1, y1] = networkBounds();
+    netView.cx = (x0 + x1) / 2; netView.cy = (y0 + y1) / 2;
+    netView.sc = clamp(networkFitScale(W, H), 0.05, 14);
+}
+function clampNetView(W, H) {                   // keep the view near the network
+    const [x0, y0, x1, y1] = networkBounds();
+    netView.sc = clamp(netView.sc, Math.min(0.5 * networkFitScale(W, H), NET_MAX_SCALE), NET_MAX_SCALE);
+    netView.cx = clamp(netView.cx, x0 - 30, x1 + 30);
+    netView.cy = clamp(netView.cy, y0 - 30, y1 + 30);
+}
+function netPan(dx, dy, W, H) {                 // drag by (dx, dy) screen px
+    netView.cx -= dx / netView.sc; netView.cy -= dy / netView.sc;
+    clampNetView(W, H);
+}
+function netZoomAt(px, py, factor, W, H) {      // zoom keeping the world point under (px, py) in place
+    const wx = netView.cx + (px - W / 2) / netView.sc, wy = netView.cy + (py - H / 2) / netView.sc;
+    netView.sc *= factor;
+    clampNetView(W, H);
+    netView.cx = wx - (px - W / 2) / netView.sc; netView.cy = wy - (py - H / 2) / netView.sc;
+    clampNetView(W, H);
+}
+
+function drawNetworkScreen(W, H) {
+    const S = Math.min(W, H), M = Math.max(8, S * 0.028), topH = Math.max(30, Math.min(58, S * 0.085));
+    const sc = netView.sc;
+    const at = (wx, wy) => [W / 2 + (wx - netView.cx) * sc, H / 2 + (wy - netView.cy) * sc];
 
     ctx.save();
-    rr(x, y, size, size, Math.min(12, size * 0.06));
-    ctx.fillStyle = "rgba(4,12,12,0.8)"; ctx.fill();
-    ctx.lineWidth = Math.max(2, size * 0.012); ctx.strokeStyle = HUD.neon;
-    ctx.shadowColor = HUD.neon; ctx.shadowBlur = 8; ctx.stroke(); ctx.shadowBlur = 0;
-    ctx.clip();
+    ctx.fillStyle = "rgba(4,12,12,0.96)"; ctx.fillRect(0, 0, W, H);
     ctx.lineCap = "round";
     for (const h of G.hubs.values()) {                                      // rails
         const to = h.out >= 0 ? hubPos(h.out) : null;
         if (!to) continue;
         const [ax, ay] = at(h.x, h.y), [bx, by] = at(to[0], to[1]);
         ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
-        ctx.strokeStyle = "rgba(20,24,30,0.9)"; ctx.lineWidth = 4; ctx.stroke();
-        ctx.strokeStyle = "#c4ccd8"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.strokeStyle = "rgba(20,24,30,0.9)"; ctx.lineWidth = 5; ctx.stroke();
+        ctx.strokeStyle = "#c4ccd8"; ctx.lineWidth = 2.5; ctx.stroke();
     }
     for (const h of G.hubs.values()) {                                      // hubs, in their builder's colour
-        const [hx, hy] = at(h.x, h.y), s = Math.max(6, Math.min(12, sc * 1.6));
+        const [hx, hy] = at(h.x, h.y), hs = clamp(sc * 1.6, 7, 16);
         ctx.fillStyle = hubAccent(h.bn); ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.lineWidth = 1.5;
-        ctx.fillRect(hx - s / 2, hy - s / 2, s, s); ctx.strokeRect(hx - s / 2, hy - s / 2, s, s);
+        ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs); ctx.strokeRect(hx - hs / 2, hy - hs / 2, hs, hs);
     }
-    const label = (str, px, py, color, dy) => {                             // outlined text, kept inside the panel
-        const fs = Math.max(10, size * 0.055);
+    const fs = clamp(S * 0.03, 11, 18);
+    const label = (str, px, py, color, dy) => {                             // outlined text, kept on screen
         ctx.font = `bold ${fs}px ${HUD.font}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        const ty = Math.max(y + fs, Math.min(y + size - fs, py + dy)), tx = Math.max(x + fs * 1.6, Math.min(x + size - fs * 1.6, px));
+        const tx = clamp(px, fs * 1.8, W - fs * 1.8), ty = clamp(py + dy, topH + M * 2, H - fs);
         ctx.lineWidth = fs * 0.3; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.strokeText(str, tx, ty);
         ctx.fillStyle = color; ctx.fillText(str, tx, ty);
     };
     {                                                                       // the base: a big yellow disc with a house
-        const [bx, by] = at(0, 0), br = Math.max(9, size * 0.05);
+        const [bx, by] = at(0, 0), br = Math.max(9, S * 0.022);
         ctx.fillStyle = HUD.amber; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fill(); ctx.stroke();
         ctx.fillStyle = "#2a2318"; ctx.beginPath();
         ctx.moveTo(bx - br * 0.6, by); ctx.lineTo(bx, by - br * 0.6); ctx.lineTo(bx + br * 0.6, by);
         ctx.lineTo(bx + br * 0.45, by + br * 0.5); ctx.lineTo(bx - br * 0.45, by + br * 0.5); ctx.closePath(); ctx.fill();
-        label("BASE", bx, by, HUD.amber, br + size * 0.04);
+        label("BASE", bx, by, HUD.amber, br + fs * 0.9);
     }
     {                                                                       // you: a white arrow (pointing where you face) with a pulsing ring
-        const [px, py] = at(G.x, G.y), pulse = 0.5 + 0.5 * Math.sin(performance.now() / 300), a = Math.max(7, size * 0.04);
+        const [px, py] = at(G.x, G.y), pulse = 0.5 + 0.5 * Math.sin(performance.now() / 300), a = Math.max(7, S * 0.018);
         ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.4 * pulse})`; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(px, py, a * (1.8 + 0.6 * pulse), 0, TAU); ctx.stroke();
         ctx.save(); ctx.translate(px, py); ctx.rotate(G.h);
         ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(0, -a * 1.5); ctx.lineTo(a, a); ctx.lineTo(0, a * 0.4); ctx.lineTo(-a, a); ctx.closePath();
         ctx.fill(); ctx.stroke(); ctx.restore();
-        label("YOU", px, py, "#ffffff", -(a * 2.6 + size * 0.02));
+        label("YOU", px, py, "#ffffff", -(a * 2.6 + fs * 0.6));
     }
-    {                                                                       // north marker
-        const fs = Math.max(11, size * 0.06);
-        ctx.font = `bold ${fs}px ${HUD.font}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillStyle = HUD.neon; ctx.fillText("N", x + size - fs, y + fs * 1.4);
-        ctx.beginPath(); ctx.moveTo(x + size - fs, y + fs * 0.3); ctx.lineTo(x + size - fs * 1.4, y + fs * 0.85);
-        ctx.lineTo(x + size - fs * 0.6, y + fs * 0.85); ctx.closePath(); ctx.fill();
+    {                                                                       // north marker, top left
+        const nx = M + fs, ny = M + topH + M + fs;
+        ctx.font = `bold ${fs * 1.2}px ${HUD.font}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillStyle = HUD.neon; ctx.fillText("N", nx, ny + fs * 0.9);
+        ctx.beginPath(); ctx.moveTo(nx, ny - fs * 0.7); ctx.lineTo(nx - fs * 0.4, ny - fs * 0.05);
+        ctx.lineTo(nx + fs * 0.4, ny - fs * 0.05); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
+
+    text("RAIL NETWORK", W / 2, M + topH * 0.62, Math.max(13, topH * 0.4), HUD.neon, "center", 8);
+    text("drag to pan  \u00b7  scroll or pinch to zoom", W / 2, H - M, Math.max(10, S * 0.022), HUD.dim, "center", 0);
+    drawSquareButton(W - M - topH, M, topH, "close", false);                // the cross that leaves the screen
+    hudHit.netClose = { x: W - M - topH, y: M, w: topH, h: topH };
 }
 
 // Small caption pill centred at (x, y).
@@ -338,6 +373,14 @@ function pillLabel(str, x, y, color, size) {
 
 function drawHUD(cam, W, H) {
     const S = Math.min(W, H);
+    if (G.showNetwork) {
+        // The fullscreen network map covers the game: only its cross, toasts and warnings stay live.
+        for (const k in hudHit) hudHit[k] = null;
+        drawNetworkScreen(W, H);
+        drawToasts(W, Math.max(8, S * 0.028) * 1.6 + Math.max(30, Math.min(58, S * 0.085)));
+        if (G.idleUntil > performance.now()) drawBanner(W, H, `STILL THERE?  MOVE WITHIN ${Math.ceil((G.idleUntil - performance.now()) / 1000)}s`, "#ff5a4d");
+        return;
+    }
     const M = Math.max(8, S * 0.028);
     const touch = typeof touchMode !== "undefined" && touchMode;
     const topH = Math.max(30, Math.min(58, S * 0.085));
@@ -352,13 +395,9 @@ function drawHUD(cam, W, H) {
     hudHit.lens = { x: M + topH + gap0, y: M, w: topH, h: topH };
     drawSquareButton(M + 2 * (topH + gap0), M, topH, "map", G.showMap);
     hudHit.minimap = { x: M + 2 * (topH + gap0), y: M, w: topH, h: topH };
-    drawSquareButton(M + 3 * (topH + gap0), M, topH, "network", G.showNetwork);
+    drawSquareButton(M + 3 * (topH + gap0), M, topH, "network", false);
     hudHit.network = { x: M + 3 * (topH + gap0), y: M, w: topH, h: topH };
     if (G.showMap) drawMinimap(cam, M, M + topH + gap0, Math.max(96, Math.min(190, S * 0.3)) * Math.SQRT2);
-    if (G.showNetwork) {
-        const ns = Math.max(170, Math.min(340, S * 0.45, W * 0.7));
-        drawNetworkMap(W - M - ns, M + topH + gap0, ns);
-    }
 
     // Bottom centre: [hub | ship]  [about-face]  [travel], thumb-sized on touch.
     const fbR = touch ? Math.max(28, Math.min(46, S * 0.075)) : Math.max(20, Math.min(38, S * 0.05));
