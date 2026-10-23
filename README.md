@@ -53,6 +53,10 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 - **Hub menu.** Parked on a hub (or the base) you can only **ship** your gems to the base on their
   own cart or switch on **travel mode**, which also turns steering off and stays on until you press TRAVEL again (or drive away
   from the hubs), and tapping a track leaving your hub rides along it, hop after hop.
+- **Light.** Away from hubs it gets dark: from **100** tiles to the closest hub (the base counts) the
+  screen darkens, at **250** it is pitch black and you are told that hubs are needed for light, and at
+  **300** you are *lost*: sent back to the base with **half your cargo** (rounded down, the rest is
+  delivered). Build hubs to push the dark back. Riding the rails is never dark-checked.
 - **Paying is cargo-first.** Hubs, tracks and tolls come out of your cargo; if it falls short you
   are asked whether to pay the missing part from your banked score, and nothing is taken from
   your score without a yes. Without enough cargo plus score the action is refused.

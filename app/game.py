@@ -33,6 +33,12 @@ RUSH_START = 23 * 60  # minute of the day when gems become worth double
 FINAL_WARN = 23 * 60 + 50  # minute of the day for the "deliver your cargo" warning
 RUSH_MULTIPLIER = 2
 SPAWN_RING = 8.0  # players spawn within this radius of the origin
+LIGHT_DIM = 100.0  # tiles from the closest hub (base included) where the screen starts to darken
+LIGHT_DARK = (
+    250.0  # ...where it is completely dark (the client warns that hubs bring light)
+)
+LIGHT_LOST = 300.0  # ...where the robot is lost: back to the base with half its cargo
+LIGHT_EVERY = 4  # ticks between light checks per player (5 Hz is plenty at 15 tiles/s)
 
 # Control, format and bidi/zero-width code point ranges removed from names and chat.
 _STRIP_RANGES = (
@@ -308,6 +314,8 @@ class Game:
                 if player.drilled_tile is not None:
                     self._drill(player)
                 self._pickup(player)
+                if (self.tick_count + player.num) % LIGHT_EVERY == 0:
+                    self._check_light(player)
             self._deliver(player)
         self._move_carts()
         if self.tick_count % BOARD_EVERY == 1:
@@ -347,6 +355,15 @@ class Game:
         player.notices.append({"t": "gain", "v": value, "mega": mega})
         if mega:
             self.announce(f"{player.name} mined a MEGA gem worth {value}!")
+
+    def _check_light(self, player: Player) -> None:
+        """Too far from every hub: the robot is lost, comes home and loses half its cargo."""
+        if self.rail.has_hub_within(player.x, player.y, LIGHT_LOST):
+            return
+        lost = player.cargo - player.cargo // 2
+        player.cargo -= lost
+        self._spawn(player)
+        player.notices.append({"t": "lost", "v": lost})
 
     def _deliver(self, player: Player) -> None:
         if player.cargo and math.hypot(player.x, player.y) <= BASE_RADIUS:

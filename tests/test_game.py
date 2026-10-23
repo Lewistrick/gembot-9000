@@ -10,12 +10,15 @@ from app.game import (
     DISCONNECT_GRACE,
     IDLE_KICK,
     IDLE_WARN,
+    LIGHT_EVERY,
     MAX_PLAYERS,
     NAME_MAX,
     Game,
     clean_text,
 )
-from app.grid import BASE_RADIUS, MEGA_VALUE
+from app.grid import BASE_RADIUS, MEGA_VALUE, World
+from app.player import Player, Ride
+from app.rail import Hub
 
 
 class FakeClock:
@@ -257,3 +260,64 @@ def test_leaderboard_ranks_by_score_then_join_order(game: Game) -> None:
     game.tick()  # the first tick builds the board
     assert [r["n"] for r in game.board_rows()] == ["A", "C", "B"]
     assert game.rank["a"] == 1 and game.rank["b"] == 3
+
+
+# -- light: hubs keep the robot from getting lost ------------------------ #
+class OpenWorld(World):
+    def is_floor(self, x: int, y: int) -> bool:
+        return True
+
+
+def lost_notices(player: Player) -> list[dict]:
+    return [n for n in player.notices if n["t"] == "lost"]
+
+
+def test_lost_far_from_every_hub_returns_to_base_with_half_the_cargo(
+    game: Game,
+) -> None:
+    game.world = OpenWorld("t")
+    p = game.join("a", "Ann")
+    assert p is not None
+    p.place(301, 0)
+    p.cargo = 11
+    for _ in range(LIGHT_EVERY):  # the light is checked every few ticks
+        game.tick()
+    assert math.hypot(p.x, p.y) <= BASE_RADIUS and p.speed == 0.0
+    assert lost_notices(p) == [{"t": "lost", "v": 6}]  # 11 -> 5 are kept...
+    assert p.cargo == 0 and p.delivered == 5  # ...and banked, being at the base
+
+
+def test_a_hub_within_reach_keeps_the_robot_found(game: Game) -> None:
+    game.world = OpenWorld("t")
+    p = game.join("a", "Ann")
+    assert p is not None
+    game.rail.hubs[1] = Hub(1, 400, 0, "b", 0)
+    p.place(650, 0)  # 250 from that hub, 650 from the base
+    p.cargo = 10
+    for _ in range(2 * LIGHT_EVERY):
+        game.tick()
+    assert (p.x, p.y) == (650, 0) and p.cargo == 10 and not lost_notices(p)
+    p.place(701, 0)  # 301 from the hub
+    for _ in range(LIGHT_EVERY):
+        game.tick()
+    assert math.hypot(p.x, p.y) <= BASE_RADIUS and lost_notices(p)
+
+
+def test_299_tiles_from_the_base_is_still_found(game: Game) -> None:
+    game.world = OpenWorld("t")
+    p = game.join("a", "Ann")
+    assert p is not None
+    p.place(299, 0)
+    for _ in range(2 * LIGHT_EVERY):
+        game.tick()
+    assert (p.x, p.y) == (299, 0) and not lost_notices(p)
+
+
+def test_riding_players_are_never_lost(game: Game) -> None:
+    p = game.join("a", "Ann")
+    assert p is not None
+    p.place(305, 0)
+    p.ride = Ride(pts=[(305.0 + i, 0.0) for i in range(1, 40)])
+    for _ in range(LIGHT_EVERY):
+        game.tick()
+    assert p.ride is not None and p.x > 305 and not lost_notices(p)

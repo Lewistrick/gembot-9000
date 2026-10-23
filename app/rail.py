@@ -115,6 +115,11 @@ class Network:
                 return h
         return None
 
+    def has_hub_within(self, x: float, y: float, reach: float) -> bool:
+        """Is any hub (the base included) within ``reach`` tiles of ``(x, y)``?"""
+        limit = reach * reach
+        return any((h.x - x) ** 2 + (h.y - y) ** 2 <= limit for h in self.hubs.values())
+
     def nearest(self, x: float, y: float, reach: float = 0.9) -> Hub | None:
         """The hub a robot at ``(x, y)`` is standing on (base: its whole depot)."""
         best, best_d = None, reach

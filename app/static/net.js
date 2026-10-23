@@ -25,6 +25,9 @@ const G = {
     hubs: new Map(),           // id -> { id, x, y, bn (builder num), out (hub id or -1) }
     carts: new Map(),          // id -> { from, to, t0, a } (interpolated like robots)
     riding: false,
+    light: [100, 250, 300],    // tiles from the nearest hub: starts to darken, pitch dark, lost (from welcome)
+    lightD: 0,                 // distance to the nearest hub (the base counts), updated every frame
+    dark: 0,                   // how dark the screen is right now, 0..1 (eased)
     showArrows: false,         // lens: arrows to the base, nearest gem and nearest hub
     showMap: false,            // minimap around the player
     showNetwork: false,        // the fullscreen rail network, north up (never remembered across loads)
@@ -113,7 +116,7 @@ function otherPos(o, now) {
 // ---- Connecting ----
 function resetClientWorld() {
     clearWorld();
-    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showNetwork = false;
+    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showNetwork = false; G.lightD = G.dark = 0;
     if (typeof clearRailUi === "function") clearRailUi();
     G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
     haveCam = false;
@@ -165,6 +168,7 @@ const HANDLERS = {
     welcome(m) {
         G.me = m.you; G.day = m.day; G.cap = m.cap; G.tickMs = m.tick_ms;
         G.hubCost = m.hub_cost; G.maxTrack = m.max_track;
+        if (m.light) G.light = m.light;
         G.maxSpeed = m.max_speed; G.baseR = m.base; G.colors = m.colors; G.mult = m.mult;
         CS = m.chunk;
         G.state = "playing";
@@ -176,8 +180,9 @@ const HANDLERS = {
     drilled(m) { addDrilled(m.c); },
     meta(m) { for (const e of m.list) G.meta.set(e.n, e); },
     tick(m) {
-        camFrom = haveCam ? robotPose() : { x: m.x, y: m.y, h: m.h };
-        if (!haveCam) { camH = m.h; camHAt = performance.now(); }
+        const jumped = haveCam && Math.hypot(m.x - G.x, m.y - G.y) > 60;   // sent back to base: no flying across the map
+        camFrom = haveCam && !jumped ? robotPose() : { x: m.x, y: m.y, h: m.h };
+        if (!haveCam || jumped) { camH = m.h; camHAt = performance.now(); }
         camTo = { x: m.x, y: m.y, h: m.h };
         segStart = performance.now();
         segDur = G.tickMs;
@@ -210,6 +215,10 @@ const HANDLERS = {
         G.left = m.left; G.leftAt = performance.now();
         G.pal = Object.assign({}, m.pal, { player: "#e53935" });
         if (typeof refreshPlayersPanel === "function") refreshPlayersPanel();
+    },
+    lost(m) {
+        toast(`You got lost in the dark and were sent back to base. Half your cargo is gone (-${m.v}).`, "#ff6b5e", 7000);
+        sendControls(true);                  // the server let go of the controls; say what is still held
     },
     announce(m) { toast(m.text, HUD.amber, 5000); },
     hubs(m) { for (const r of m.list) G.hubs.set(r[0], { id: r[0], x: r[1], y: r[2], bn: r[3], out: r[4] }); },

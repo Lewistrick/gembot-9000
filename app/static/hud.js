@@ -433,5 +433,7 @@ function drawHUD(cam, W, H) {
         drawBanner(W, H, `STILL THERE?  MOVE WITHIN ${Math.ceil((G.idleUntil - performance.now()) / 1000)}s`, "#ff5a4d");
     } else if (!G.connected && wantPlaying) {
         drawBanner(W, H, "RECONNECTING…", HUD.amber);
+    } else if (G.lightD >= G.light[1]) {
+        drawBanner(W, H, `TOO DARK \u00b7 LOST IN ${Math.max(0, Math.ceil(G.light[2] - G.lightD))}m`, "#ff5a4d");
     }
 }

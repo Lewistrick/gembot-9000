@@ -363,6 +363,53 @@ function freePort() {
         ["netEsc", "Escape leaves the network map"],
     ]) check(aids[k] === true, what);
 
+    // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---
+    const light = await a.evaluate(async () => {
+        const frames = (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+        const realTick = HANDLERS.tick, saved = { x: G.x, y: G.y, from: camFrom, to: camTo };
+        HANDLERS.tick = () => {};
+        const out = {};
+        try {
+            G.hubs.clear(); G.toasts.length = 0;
+            const at = (x, y) => { G.x = x; G.y = y; camFrom = camTo = { x, y, h: 0 }; };
+            at(40, 0);
+            await frames(60);
+            out.litNearBase = G.dark === 0 && G.lightD < 50;
+            at(175, 0);                                  // halfway between 100 and 250
+            await frames(60);
+            out.dim = G.dark > 0.45 && G.dark < 0.55;
+            out.noNoticeYet = !G.toasts.some((t) => t.text.includes("pitch dark"));
+            at(260, 0);
+            await frames(90);
+            out.black = G.dark === 1 && G.lightD >= G.light[1];
+            out.pitchNotice = G.toasts.some((t) => t.text.includes("Hubs are required"));
+            G.hubs.set(1, { id: 1, x: 250, y: 0, bn: 2, out: 0 });   // a hub brings the light back
+            await frames(90);
+            out.hubLights = G.dark === 0 && G.toasts.length > 0;
+            // Sent home: the notice explains it, and the camera jumps instead of flying across the map.
+            HANDLERS.lost({ v: 7 });
+            out.lostNotice = G.toasts.some((t) => t.text.includes("lost in the dark") && t.text.includes("7"));
+            HANDLERS.tick = realTick;
+            realTick({ x: 3, y: 4, h: 0, s: 0, c: 1, sc: 0, f: false, r: 0 });
+            const p = robotPose();
+            out.snaps = Math.hypot(p.x - 3, p.y - 4) < 1e-6;
+        } finally {
+            HANDLERS.tick = realTick; G.hubs.clear(); G.dark = 0; G.toasts.length = 0;
+            G.x = saved.x; G.y = saved.y; camFrom = saved.from; camTo = saved.to;
+        }
+        return out;
+    });
+    for (const [k, what] of [
+        ["litNearBase", "no darkness near the base"],
+        ["dim", "halfway between 100 and 250 tiles from a hub the screen is half dark"],
+        ["noNoticeYet", "no darkness notice before it is pitch dark"],
+        ["black", "completely dark at 250 tiles"],
+        ["pitchNotice", "pitch black says hubs are required to provide light"],
+        ["hubLights", "a hub nearby brings the light back"],
+        ["lostNotice", "being sent home shows the lost message"],
+        ["snaps", "the camera jumps when sent back to base"],
+    ]) check(light[k] === true, what);
+
     // --- Tap robots: yours edits your message, someone else's opens their menu ---
     // (done inside one page call: the server's next update would drop an injected robot)
     const taps = await a.evaluate(async () => {
