@@ -34,6 +34,8 @@ let myName = "";               // nickname sent when joining
 let wantPlaying = false;       // true while we should (re)connect and stay in the game
 let camFrom = { x: 0, y: 0, h: 0 }, camTo = { x: 0, y: 0, h: 0 };
 let segStart = 0, segDur = 50, haveCam = false;
+let camH = 0, camHAt = 0;      // eased camera heading: the map follows the robot's turn with a little lag
+const CAM_EASE_MS = 130;       // how quickly the camera catches up with the robot's heading
 
 // Stable per-browser token so a reconnect resumes the same robot and score.
 let token = null;
@@ -72,13 +74,27 @@ function reportViewport() {
     send({ action: "resize", cols: v.cols, rows: v.rows });
 }
 
-function currentCam() {
+// The robot's own interpolated pose between two server ticks.
+function robotPose() {
     const t = Math.min(1, (performance.now() - segStart) / segDur);
     return {
         x: lerp(camFrom.x, camTo.x, t),
         y: lerp(camFrom.y, camTo.y, t),
         h: lerp(camFrom.h, camTo.h, t),
     };
+}
+
+// Call once per frame: eases the camera heading toward the robot's (snapping after a jump).
+function easeCamHeading(now) {
+    const rh = robotPose().h, dt = Math.min(100, now - camHAt);
+    camHAt = now;
+    camH = Math.abs(rh - camH) > Math.PI ? rh : camH + (rh - camH) * (1 - Math.exp(-dt / CAM_EASE_MS));
+}
+
+// What to draw from: the robot's position, the eased map heading ``h`` and the robot's true heading ``rh``.
+function currentCam() {
+    const p = robotPose();
+    return { x: p.x, y: p.y, h: camH, rh: p.h };
 }
 
 function otherPos(o, now) {
@@ -150,7 +166,8 @@ const HANDLERS = {
     mined(m) { for (const p of m.c) mined.add(p[0] + "," + p[1]); },
     meta(m) { for (const e of m.list) G.meta.set(e.n, e); },
     tick(m) {
-        camFrom = haveCam ? currentCam() : { x: m.x, y: m.y, h: m.h };
+        camFrom = haveCam ? robotPose() : { x: m.x, y: m.y, h: m.h };
+        if (!haveCam) { camH = m.h; camHAt = performance.now(); }
         camTo = { x: m.x, y: m.y, h: m.h };
         segStart = performance.now();
         segDur = G.tickMs;
@@ -189,6 +206,7 @@ const HANDLERS = {
     rail(m) { toast(m.msg, m.ok ? "#3ef07a" : "#ff6b5e", m.ok ? 2500 : 4000); },
     toll(m) { toast(`+${m.v} toll from ${m.from}`, "#3ef07a", 2500); },
     quote(m) { onQuote(m); },
+    hubopts(m) { openHubPicker(m); },
     built() { endBuildMode(); },
     net(m) { openNetMap(m); },
     newday(m) {

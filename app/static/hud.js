@@ -24,7 +24,7 @@ function drawCompass(cam, x, y, w, h) {
     const cx = x + w / 2;
     const VIS = 100;                       // degrees shown across the strip
     const ppd = w / VIS;
-    const bearing = ((cam.h * 180 / Math.PI) % 360 + 360) % 360;
+    const bearing = ((cam.rh * 180 / Math.PI) % 360 + 360) % 360;
     ctx.save();
     rr(x + 2, y + 2, w - 4, h - 4, Math.min(9, h * 0.2)); ctx.clip();
     const first = Math.ceil((bearing - VIS / 2) / 15) * 15;

@@ -67,7 +67,11 @@
             way), or <b>ship your cargo</b> to the base on its own cart, which scores for you when it
             arrives. Everyone shares every hub, and there's a <b>toll</b>: each hub built by someone
             else on your route costs <b>1 point of cargo</b>, paid to its builder. Your own hubs are
-            free. No cargo means no ride! Press <b>B</b> to build a loose hub where you stand.</p>
+            free. No cargo means no ride!</p>
+        <p>You can also place a hub right where you <b>stand still</b> on an empty tile: tap
+            <b>Place hub</b> (or press <b>B</b>). You're offered the nearest hubs it can lead to, each
+            with its price; pick one and the hub and its track are built together. A hub never exists
+            without a track.</p>
 
         <h3>Day, rush hour &amp; winners</h3>
         <p>The day ends at midnight; cargo you haven't delivered is lost. In the <b>last hour</b>
@@ -92,7 +96,6 @@
     <section class="panel">
         <button id="resumeBtn" class="btn big">&#9654; Back to the mine</button>
         <button id="pausePlayersBtn" class="btn ghost">Players &amp; blocking</button>
-        <button id="pauseHubBtn" class="btn ghost">Build a hub here (25)</button>
         <button id="pauseHowBtn" class="btn ghost">How to Play</button>
         <button id="leaveBtn" class="btn ghost">&#9632; Leave the mine</button>
     </section>
@@ -120,6 +123,16 @@
         <button id="hubNet" class="btn big small">Rails &#9656;</button>
         <button id="hubBuild" class="btn ghost small">Build track</button>
     </div>
+</div>
+
+<div id="placepanel" class="hubpanel hidden">
+    <button id="placeHub" class="btn big small">Place hub (B)</button>
+</div>
+
+<div id="hubpicker" class="chatbar pickbar hidden">
+    <div class="picktitle">Where should the cargo go?</div>
+    <div id="pickList" class="picklist"></div>
+    <button id="pickCancel" class="btn ghost small">Cancel</button>
 </div>
 
 <div id="buildbar" class="chatbar hidden">

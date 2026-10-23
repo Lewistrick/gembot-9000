@@ -5,16 +5,17 @@ const menuEl = $("menu"), howtoEl = $("howto"), pauseEl = $("pause"), noticeEl =
 const chatBarEl = $("chatbar"), chatInEl = $("chatin"), playersEl = $("players");
 const nickEl = $("nick");
 const hubPanelEl = $("hubpanel"), buildBarEl = $("buildbar"), netMapEl = $("netmap");
+const placePanelEl = $("placepanel"), pickerEl = $("hubpicker");
 
 let howReturnEl = menuEl;       // screen to restore when How-to's Back is pressed
 
 // ---- Which overlay is open? (the game keeps running underneath; we just stop steering) ----
 function overlayOpen() {
-    return !!buildMode ||
+    return !!buildMode || !pickerEl.classList.contains("hidden") ||
         [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl].some((el) => !el.classList.contains("hidden"));
 }
 function hideAllScreens() {
-    for (const el of [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl]) el.classList.add("hidden");
+    for (const el of [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl, pickerEl]) el.classList.add("hidden");
     sendControls(true);
 }
 function showScreen(el) {
@@ -126,6 +127,8 @@ let netData = null, nmSel = null, nmHits = [];
 
 function clearRailUi() {
     buildMode = null;
+    closeHubPicker();
+    placePanelEl.classList.add("hidden");
     buildBarEl.classList.add("hidden");
     netMapEl.classList.add("hidden");
     hubPanelEl.classList.add("hidden");
@@ -154,9 +157,47 @@ function updateHubPanel() {
 }
 setInterval(updateHubPanel, 120);
 
+// -- Placing a hub: stand still on an empty tile, pick which hub its track leads to --
+function updatePlacePanel() {
+    const show = G.state === "playing" && !G.riding && G.speed <= 1.5 && !overlayOpen() && !parkedHub();
+    placePanelEl.classList.toggle("hidden", !show);
+}
+setInterval(updatePlacePanel, 120);
+
+function requestHubOptions() {
+    if (G.state === "playing" && !overlayOpen() && !placePanelEl.classList.contains("hidden")) {
+        send({ action: "hub_options" });
+    }
+}
+$("placeHub").addEventListener("click", requestHubOptions);
+
+function openHubPicker(m) {
+    if (G.state !== "playing" || overlayOpen()) return;
+    const list = $("pickList");
+    list.textContent = "";
+    m.opts.forEach((o, i) => {
+        const b = document.createElement("button");
+        b.className = "btn big small";
+        const where = o.to === 0 ? "The base" : `Hub #${o.to}${o.linked ? "" : " (not linked to base)"}`;
+        b.textContent = `${i + 1}. ${where} · ${o.len} tiles · cost ${o.cost}`;
+        b.addEventListener("click", () => {
+            send({ action: "build_hub", to: o.to, x: m.x, y: m.y });
+            closeHubPicker();
+        });
+        list.appendChild(b);
+    });
+    placePanelEl.classList.add("hidden");
+    showScreen(pickerEl);
+}
+function closeHubPicker() {
+    if (pickerEl.classList.contains("hidden")) return;
+    pickerEl.classList.add("hidden");
+    sendControls(true);
+}
+$("pickCancel").addEventListener("click", closeHubPicker);
+
 $("hubNet").addEventListener("click", () => send({ action: "netmap" }));
 $("hubBuild").addEventListener("click", startBuildMode);
-$("pauseHubBtn").addEventListener("click", () => { resume(); send({ action: "build_hub" }); });
 
 // -- Network map: pick a hub to ride to, or ship your cargo to the base --
 function openNetMap(m) {
@@ -402,6 +443,12 @@ window.addEventListener("keydown", (e) => {
         else if (e.key === "Enter") { e.preventDefault(); confirmBuild(); }
         return;
     }
+    if (!pickerEl.classList.contains("hidden")) {
+        const n = Number(e.key);
+        if (e.key === "Escape") { e.preventDefault(); closeHubPicker(); }
+        else if (n >= 1 && n <= $("pickList").children.length) { e.preventDefault(); $("pickList").children[n - 1].click(); }
+        return;
+    }
     if (!netMapEl.classList.contains("hidden")) { nmKey(e); return; }
     if (overlayOpen()) {
         if (e.key === "Escape" && !pauseEl.classList.contains("hidden")) resume();
@@ -423,7 +470,7 @@ window.addEventListener("keydown", (e) => {
     } else if (e.key === "Tab") {
         e.preventDefault(); togglePlayersPanel();
     } else if (e.key === "b" || e.key === "B") {
-        e.preventDefault(); if (!e.repeat) send({ action: "build_hub" });
+        e.preventDefault(); if (!e.repeat) requestHubOptions();
     } else if (e.key === "r" || e.key === "R") {
         e.preventDefault(); if (parkedHub()) send({ action: "netmap" });
     } else if (e.key === "Escape") {

@@ -17,6 +17,8 @@ BRAKE = 26.0  # tiles/second^2 while braking (Down)
 DRAG = 0.5  # fraction of speed lost per second when coasting
 STEER = 2.8  # radians/second while steering at speed (Left/Right)
 STEER_MIN = 0.35  # fraction of the steering rate available at a standstill
+STEER_ACCEL = 8.0  # radians/second^2 the turn rate builds up while a steer key is held
+STEER_EASE = 10.0  # radians/second^2 it eases back to straight once released
 
 # Wall-bounce knobs. On a hit the into-wall speed is reversed into a short-lived
 # "knockback" velocity (heading is left alone), so the vehicle rebounds off the
@@ -58,6 +60,7 @@ class Player:
     ky: float = 0.0
     bump: float = 0.0  # into-wall impact this tick (drives the client's red flash)
     flip_remaining: float = 0.0  # radians left in a smooth 180° about-face
+    spin: float = 0.0  # current turn rate in radians/second (+ is clockwise / right)
     up: bool = False
     down: bool = False
     left: bool = False
@@ -101,6 +104,7 @@ class Player:
         self.speed = 0.0
         self.kx = self.ky = self.bump = 0.0
         self.flip_remaining = 0.0
+        self.spin = 0.0
         self.release_controls()
 
     def step(self, world: World, dt: float = TICK) -> None:
@@ -112,13 +116,15 @@ class Player:
             self.heading += step
             self.flip_remaining -= step
             self.speed *= FLIP_SLOW
+            self.spin = 0.0
         else:
-            # Turn rate scales with speed (subtle at a crawl, fuller at speed).
+            # Turn rate scales with speed (subtle at a crawl, fuller at speed), but
+            # the robot only builds up to it and eases back, so steering is not abrupt.
             turn = STEER * (STEER_MIN + (1.0 - STEER_MIN) * self.speed / MAX_SPEED)
-            if self.left:
-                self.heading -= turn * dt
-            if self.right:
-                self.heading += turn * dt
+            want = turn * (self.right - self.left)
+            rate = STEER_ACCEL if want else STEER_EASE
+            self.spin += _clamp(want - self.spin, -rate * dt, rate * dt)
+            self.heading += self.spin * dt
             if self.up:
                 self.speed += ACCEL * dt
             if self.down:
