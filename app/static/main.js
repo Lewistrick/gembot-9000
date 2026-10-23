@@ -55,6 +55,8 @@ function drawMyDrill(ax, ay, now, turn) {
     pillText(G.cargo > 0 ? "DRILLING  -1 cargo" : "DRILLING  free, slow (no cargo)", ax, ay + tile * 1.6, HUD.amber);
 }
 
+const robotHits = [];           // tap targets this frame: { x, y, r, me } or { x, y, r, meta }
+
 function drawOthers(cam, ax, ay, W, H, now) {
     const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h), pad = tile * 3;
     const labels = [];
@@ -74,6 +76,7 @@ function drawOthers(cam, ax, ay, W, H, now) {
             drawDrillSparks(sx + Math.sin(a) * tile * 0.5, sy - Math.cos(a) * tile * 0.5, now, 0.6);
         }
         labels.push([sx, sy, meta]);
+        robotHits.push({ x: sx, y: sy, r: tile * 0.75, meta });
     }
     for (const l of labels) drawRobotLabels(l[0], l[1], l[2], now);
 }
@@ -185,6 +188,7 @@ function draw() {
     drawGems(cam, ax, ay, W, H, colors);
     ART.base(ctx, bp[0], bp[1], tile, now);
     drawCarts(cam, ax, ay, W, H, now, colors);
+    robotHits.length = 0;
     drawOthers(cam, ax, ay, W, H, now);
     ctx.save();
     ctx.translate(ax, ay);
@@ -192,6 +196,7 @@ function draw() {
     drawRobot(0, 0, tile, { player: accent(G.me.hue) }, now);
     ctx.restore();
     drawMyDrill(ax, ay, now, cam.rh - cam.h);
+    robotHits.push({ x: ax, y: ay, r: tile * 0.75, me: true });
     drawRobotLabels(ax, ay, G.meta.get(G.me.num) || { name: G.me.name, chat: "", id: G.me.id }, now);
     drawBuildPreview(cam, ax, ay, now);
 

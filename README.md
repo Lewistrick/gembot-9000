@@ -23,10 +23,10 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 |---|---|---|
 | Drive / turn | ↑ accelerate, ↓ brake, ← → steer (or W A S D) | hold the **left half** to turn left, the **right half** to turn right, **both** to go straight; lift your fingers to brake |
 | About-face (180°) | Space | the ↻ button |
-| Chat | Enter | the speech-bubble button |
-| Players, blocking | Tab | the two-heads button (or tap your score) |
-| Rails | R (when parked on a hub) | the panel that appears on a hub |
-| Place a hub where you stand | B | the **Place hub** button (shown when you stand still on an empty tile) |
+| Chat | Enter, or click your own robot | tap your own robot |
+| Block someone | click their robot, then Block | tap their robot, then Block (Tab or your score lists nearby players) |
+| Rails, build a track | R (when parked on a hub) | the **Rails** and **Track** buttons that appear beside ↻ when you park on a hub |
+| Place a hub where you stand | B | the **HUB** button beside ↻ (lit when you stand still on an empty tile) |
 | Zoom | PageUp / PageDown, + / − | |
 
 ## The rules

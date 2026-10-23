@@ -10,7 +10,8 @@ const os = require("os");
 const fs = require("fs");
 const { chromium } = require("playwright");
 
-const PORT = 8765;
+const net = require("net");
+let PORT = 8765;   // replaced by a free port at start-up
 const ROOT = path.resolve(__dirname, "..");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
@@ -24,9 +25,18 @@ async function waitFor(page, fn, what, timeout = 8000) {
     catch (e) { check(false, what); }
 }
 
+function freePort() {
+    return new Promise((resolve) => {
+        const srv = net.createServer();
+        srv.listen(0, () => { const p = srv.address().port; srv.close(() => resolve(p)); });
+    });
+}
+
 (async () => {
+    PORT = await freePort();
     const server = spawn("uv", ["run", "uvicorn", "app.server:app", "--port", String(PORT)],
-        { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", GEMBOT_DB: path.join(fs.mkdtempSync(path.join(os.tmpdir(), "gembot-smoke-")), "smoke.db") } });
+        { cwd: ROOT, detached: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", GEMBOT_DB: path.join(fs.mkdtempSync(path.join(os.tmpdir(), "gembot-smoke-")), "smoke.db") } });
+    process.on("exit", () => { try { process.kill(-server.pid); } catch (e) { /* already gone */ } });   // never leave a server behind, even if a check throws
     let serverLog = "";
     server.stderr.on("data", (d) => (serverLog += d));
     for (let i = 0; i < 60; i++) {
@@ -141,6 +151,41 @@ async function waitFor(page, fn, what, timeout = 8000) {
     await sleep(300);   // frames with the progress ring, sparks and another robot drilling
     await a.evaluate(() => { G.others.delete(99); G.meta.delete(99); G.drill = 0; clearWorld(); });
     check(await a.evaluate(() => drilled.size === 0), "leaving the world forgets drilled tiles");
+
+    // --- Tap robots: yours edits your message, someone else's opens their menu ---
+    // (done inside one page call: the server's next update would drop an injected robot)
+    const taps = await a.evaluate(async () => {
+        const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const realTick = HANDLERS.tick;
+        HANDLERS.tick = () => {};     // freeze server updates so they can't drop the injected robot
+        G.others.set(77, { from: { x: G.x + 2, y: G.y, h: 0 }, to: { x: G.x + 2, y: G.y, h: 0 }, t0: performance.now(), f: 0 });
+        G.meta.set(77, { n: 77, id: "zed-id", name: "Zed", chat: "yo", hue: 200 });
+        const find = () => [robotHits.find((r) => r.meta && r.meta.name === "Zed"), robotHits.find((r) => r.me)];
+        for (let i = 0; i < 40 && !(find()[0] && find()[1]); i++) await frames();   // wait for a frame that drew both
+        const out = {};
+        const [other, mine] = find();
+        out.targets = !!other && !!mine;
+        if (!out.targets) { HANDLERS.tick = realTick; return out; }
+        out.hud = !!hudHit.placeHub && !hudHit.chat && !hudHit.players && !hudHit.rails;
+        tapRobot(other.x, other.y);
+        out.menuOpen = !playerMenuEl.classList.contains("hidden") && $("pmName").textContent === "Zed" && overlayOpen();
+        $("pmBlock").click();
+        out.blocked = blocked.has("zed-id") && $("pmBlock").textContent.startsWith("Unblock");
+        $("pmClose").click();
+        out.menuClosed = playerMenuEl.classList.contains("hidden") && !overlayOpen();
+        tapRobot(mine.x, mine.y);
+        out.editor = !chatBarEl.classList.contains("hidden");
+        closeChat();
+        G.others.delete(77); G.meta.delete(77); blocked.delete("zed-id");
+        HANDLERS.tick = realTick;
+        return out;
+    });
+    check(taps.targets, "both robots are tap targets");
+    check(taps.hud, "HUD has the hub button and no social buttons");
+    check(taps.menuOpen, "tapping another robot opens its menu");
+    check(taps.blocked, "the menu blocks and shows Unblock");
+    check(taps.menuClosed, "the menu closes");
+    check(taps.editor, "tapping your own robot opens the message editor");
 
     // --- Status + leave ---
     const status = await (await fetch(`http://localhost:${PORT}/api/status`)).json();

@@ -4,18 +4,18 @@ const $ = (id) => document.getElementById(id);
 const menuEl = $("menu"), howtoEl = $("howto"), pauseEl = $("pause"), noticeEl = $("notice");
 const chatBarEl = $("chatbar"), chatInEl = $("chatin"), playersEl = $("players");
 const nickEl = $("nick");
-const hubPanelEl = $("hubpanel"), buildBarEl = $("buildbar"), netMapEl = $("netmap");
-const placePanelEl = $("placepanel"), pickerEl = $("hubpicker");
+const buildBarEl = $("buildbar"), netMapEl = $("netmap");
+const pickerEl = $("hubpicker"), playerMenuEl = $("playermenu");
 
 let howReturnEl = menuEl;       // screen to restore when How-to's Back is pressed
 
 // ---- Which overlay is open? (the game keeps running underneath; we just stop steering) ----
 function overlayOpen() {
     return !!buildMode || !pickerEl.classList.contains("hidden") ||
-        [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl].some((el) => !el.classList.contains("hidden"));
+        [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl, playerMenuEl].some((el) => !el.classList.contains("hidden"));
 }
 function hideAllScreens() {
-    for (const el of [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl, pickerEl]) el.classList.add("hidden");
+    for (const el of [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl, pickerEl, playerMenuEl]) el.classList.add("hidden");
     sendControls(true);
 }
 function showScreen(el) {
@@ -128,10 +128,9 @@ let netData = null, nmSel = null, nmHits = [];
 function clearRailUi() {
     buildMode = null;
     closeHubPicker();
-    placePanelEl.classList.add("hidden");
     buildBarEl.classList.add("hidden");
     netMapEl.classList.add("hidden");
-    hubPanelEl.classList.add("hidden");
+    playerMenuEl.classList.add("hidden");
 }
 
 // The hub the robot is parked on (the base counts anywhere in its depot).
@@ -149,27 +148,23 @@ function builderName(bn) {
     return m ? m.name : "another player";
 }
 
-function updateHubPanel() {
+// Caption for the hub the robot is parked on (drawn by the HUD above the bottom buttons).
+function hubCaption() {
     const h = parkedHub();
-    if (!h) { hubPanelEl.classList.add("hidden"); return; }
-    hubPanelEl.classList.remove("hidden");
-    $("hubTitle").textContent = h.id === 0 ? "The base" : `Hub #${h.id}  ·  built by ${builderName(h.bn)}`;
+    if (!h) return "";
+    return h.id === 0 ? "THE BASE" : `HUB #${h.id}  BY ${builderName(h.bn).toUpperCase()}`;
 }
-setInterval(updateHubPanel, 120);
 
 // -- Placing a hub: stand still on an empty tile, pick which hub its track leads to --
-function updatePlacePanel() {
-    const show = G.state === "playing" && !G.riding && G.speed <= 1.5 && !overlayOpen() && !parkedHub();
-    placePanelEl.classList.toggle("hidden", !show);
+function canPlaceHub() {
+    return G.state === "playing" && !G.riding && G.speed <= 1.5 && !overlayOpen() && !parkedHub();
 }
-setInterval(updatePlacePanel, 120);
 
 function requestHubOptions() {
-    if (G.state === "playing" && !overlayOpen() && !placePanelEl.classList.contains("hidden")) {
-        send({ action: "hub_options" });
-    }
+    if (G.state !== "playing" || overlayOpen()) return;
+    if (canPlaceHub()) send({ action: "hub_options" });
+    else toast("Stop on an empty tile to place a hub.", HUD.amber, 2500);
 }
-$("placeHub").addEventListener("click", requestHubOptions);
 
 function openHubPicker(m) {
     if (G.state !== "playing" || overlayOpen()) return;
@@ -186,7 +181,6 @@ function openHubPicker(m) {
         });
         list.appendChild(b);
     });
-    placePanelEl.classList.add("hidden");
     showScreen(pickerEl);
 }
 function closeHubPicker() {
@@ -196,8 +190,41 @@ function closeHubPicker() {
 }
 $("pickCancel").addEventListener("click", closeHubPicker);
 
-$("hubNet").addEventListener("click", () => send({ action: "netmap" }));
-$("hubBuild").addEventListener("click", startBuildMode);
+// -- Player menu: tap another robot to see what it says and block it --
+let pmId = null;
+function refreshPlayerMenu() {
+    const blockedNow = pmId !== null && blocked.has(pmId);
+    $("pmBlock").textContent = blockedNow ? "Unblock chat" : "Block chat";
+}
+function openPlayerMenu(meta) {
+    pmId = meta.id;
+    $("pmName").textContent = (meta.crown ? "\u265B " : "") + meta.name;
+    $("pmChat").textContent = meta.chat ? `\u201C${meta.chat}\u201D` : "(no message)";
+    refreshPlayerMenu();
+    playersEl.classList.add("hidden");
+    showScreen(playerMenuEl);
+}
+function closePlayerMenu() {
+    if (playerMenuEl.classList.contains("hidden")) return;
+    playerMenuEl.classList.add("hidden");
+    pmId = null;
+    sendControls(true);
+}
+$("pmBlock").addEventListener("click", () => { if (pmId !== null) { toggleBlock(pmId); refreshPlayerMenu(); } });
+$("pmClose").addEventListener("click", closePlayerMenu);
+
+// Robots drawn this frame as tap targets (filled by main.js): tap yours to edit your
+// message, tap someone else's to open their menu. Returns true if a robot was hit.
+function tapRobot(x, y) {
+    let best = null, bd = Infinity;
+    for (const r of robotHits) {
+        const d = Math.hypot(r.x - x, r.y - y);
+        if (d <= r.r && d < bd) { best = r; bd = d; }
+    }
+    if (!best) return false;
+    if (best.me) openChat(); else openPlayerMenu(best.meta);
+    return true;
+}
 
 // -- Network map: pick a hub to ride to, or ship your cargo to the base --
 function openNetMap(m) {
@@ -319,7 +346,6 @@ function startBuildMode() {
     $("buildOk").disabled = true;
     $("buildMsg").textContent = "Tap a spot for a new hub, or tap a hub to link to it.";
     buildBarEl.classList.remove("hidden");
-    hubPanelEl.classList.add("hidden");
     sendControls(true);
 }
 function endBuildMode() {
@@ -452,6 +478,7 @@ window.addEventListener("keydown", (e) => {
     if (!netMapEl.classList.contains("hidden")) { nmKey(e); return; }
     if (overlayOpen()) {
         if (e.key === "Escape" && !pauseEl.classList.contains("hidden")) resume();
+        else if (e.key === "Escape" && !playerMenuEl.classList.contains("hidden")) closePlayerMenu();
         return;
     }
     const k = KEYS[e.key];
@@ -493,13 +520,16 @@ canvas.addEventListener("click", (e) => {
         return;
     }
     if (G.state !== "playing" || overlayOpen()) return;
-    if (touchMode && e.pointerType && e.pointerType !== "mouse" && !downOnHud) return;   // end of a steering hold
+    if (touchMode && e.pointerType && e.pointerType !== "mouse" && !downOnHud) return;   // touch taps: see touch.js
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left, y = e.clientY - rect.top;
     if (inRect(hudHit.hamburger, x, y)) openPause();
     else if (inRect(hudHit.flip, x, y)) send({ action: "flip" });
-    else if (inRect(hudHit.chat, x, y)) openChat();
-    else if (inRect(hudHit.players, x, y) || inRect(hudHit.score, x, y)) togglePlayersPanel();
+    else if (inRect(hudHit.placeHub, x, y)) requestHubOptions();
+    else if (inRect(hudHit.rails, x, y)) send({ action: "netmap" });
+    else if (inRect(hudHit.buildTrack, x, y)) startBuildMode();
+    else if (inRect(hudHit.score, x, y)) togglePlayersPanel();
+    else tapRobot(x, y);
 });
 
 showScreen(menuEl);

@@ -65,19 +65,19 @@
             for the rest of the day. Let go of forward to stop. You can't drill inside the base.</p>
 
         <h3>Rails: hubs, tracks and tolls</h3>
-        <p>Hauling gems home is slow, so build a rail. <b>Park on a hub</b> (or the base) and a
-            panel pops up. <b>Build track</b> lets you tap a spot: you'll see a straight line and its
+        <p>Hauling gems home is slow, so build a rail. <b>Park on a hub</b> (or the base) and two
+            buttons appear beside the turnaround button: <b>Rails</b> and <b>Track</b>. <b>Track</b> lets you tap a spot: you'll see a straight line and its
             cost, and tapping the same spot again builds it. A new <b>hub costs 25</b> and each tile
             of <b>track costs 1</b>, paid from your <b>score</b>. Tracks are straight (diagonals
             are fine), up to 60 tiles, and every tile must be floor. Tap an existing hub instead to
             link to it; loops aren't allowed, so every hub has one way home.</p>
-        <p><b>Rails</b> opens the network map. Tap a hub and <b>ride</b> there (very fast, either
+        <p>The <b>Rails</b> button opens the network map. Tap a hub and <b>ride</b> there (very fast, either
             way), or <b>ship your cargo</b> to the base on its own cart, which scores for you when it
             arrives. Everyone shares every hub, and there's a <b>toll</b>: each hub built by someone
             else on your route costs <b>1 point of cargo</b>, paid to its builder. Your own hubs are
             free. No cargo means no ride!</p>
         <p>You can also place a hub right where you <b>stand still</b> on an empty tile: tap
-            <b>Place hub</b> (or press <b>B</b>). You're offered the nearest hubs it can lead to, each
+            the <b>HUB</b> button next to the turnaround button (or press <b>B</b>). You're offered the nearest hubs it can lead to, each
             with its price; pick one and the hub and its track are built together. A hub never exists
             without a track.</p>
 
@@ -87,9 +87,14 @@
             lists past winners.</p>
 
         <h3>Chat &amp; blocking</h3>
-        <p>Press <b>Enter</b> (or the speech-bubble button) and type a message; it floats above your
-            robot until you change or clear it. Open the <b>players</b> panel (<b>Tab</b> or the
-            two-heads button) to <b>block</b> someone's chat bubbles. It only affects what you see.</p>
+        <p><b>Tap your own robot</b> (or press <b>Enter</b>) to type a message; it floats above your
+            robot until you change or clear it. <b>Tap another robot</b> to open its menu and
+            <b>block</b> their chat bubbles. <b>Tab</b> (or tapping your score) opens a list of nearby
+            players and today's top 10. Blocking only affects what you see.</p>
+        <h3>Your dashboard</h3>
+        <p>The compass at the top doubles as a radar for gems and the way home. The pane in the
+            top-right shows the <b>cargo</b> you carry (it only counts once it's delivered to the base),
+            your banked <b>score</b> and rank, and how far the base is.</p>
 
         <h3>Staying in</h3>
         <p>If you do nothing for 10 minutes you're removed to make room for others. Your score and
@@ -125,16 +130,14 @@
     <button id="chatCancel" class="btn ghost small">&times;</button>
 </div>
 
-<div id="hubpanel" class="hubpanel hidden">
-    <div id="hubTitle" class="hubtitle"></div>
+<div id="playermenu" class="pmenu hidden">
+    <div id="pmName" class="pmname"></div>
+    <div id="pmChat" class="pmchat"></div>
     <div class="hubbtns">
-        <button id="hubNet" class="btn big small">Rails &#9656;</button>
-        <button id="hubBuild" class="btn ghost small">Build track</button>
+        <button id="pmBlock" class="btn ghost small">Block</button>
+        <button id="pmClose" class="btn ghost small">Close</button>
     </div>
-</div>
-
-<div id="placepanel" class="hubpanel hidden">
-    <button id="placeHub" class="btn big small">Place hub (B)</button>
+    <p class="phint">Blocking hides this player's chat bubble for you.</p>
 </div>
 
 <div id="hubpicker" class="chatbar pickbar hidden">
