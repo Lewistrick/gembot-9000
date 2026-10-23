@@ -98,7 +98,7 @@ function resetClientWorld() {
 function connect() {
     if (ws) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const sock = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
+    const sock = new WebSocket(`${proto}://${location.host}${location.pathname.replace(/\/?$/, "/")}ws?token=${encodeURIComponent(token)}`);
     ws = sock;
     sock.onopen = () => {
         G.connected = true;

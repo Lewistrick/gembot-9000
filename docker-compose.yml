@@ -1,8 +1,16 @@
 services:
   gembot:
     build: .
+    restart: unless-stopped
+    # Localhost only: in production Caddy (~/apps/proxy) reaches this over the
+    # shared `host-edge` network as `gembot:8000`.
     ports:
-      - "8004:8000"
+      - "127.0.0.1:8004:8000"
+    networks:
+      default: {}
+      edge:
+        aliases:
+          - gembot
     environment:
       # Day boundary (rush hour, midnight rollover). Any IANA zone, e.g. Europe/Amsterdam.
       GEMBOT_TZ: UTC
@@ -19,3 +27,9 @@ services:
     # command: >
     #   uv run uvicorn app.server:app
     #   --host 0.0.0.0 --port 8000 --ws-max-size 65536 --reload
+
+networks:
+  # Created by the Caddy proxy stack (~/apps/proxy).
+  edge:
+    external: true
+    name: host-edge

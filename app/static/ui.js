@@ -321,7 +321,7 @@ try { nickEl.value = localStorage.getItem("gembot-name") || ""; } catch (e) { /*
 async function refreshMenuStatus() {
     if (menuEl.classList.contains("hidden")) return;
     try {
-        const r = await fetch("/api/status", { cache: "no-store" });
+        const r = await fetch("api/status", { cache: "no-store" });
         const s = await r.json();
         $("dayVal").textContent = s.day;
         $("onlineVal").textContent = `${s.online} / ${s.cap}`;
