@@ -210,6 +210,15 @@ function drawMinimap(cam, x, y, size) {
     }
     const at = (wx, wy) => [(wx - cam.x) * px, (wy - cam.y) * px];
     const dot = Math.max(2, px * 0.9);
+    ctx.lineCap = "round";
+    for (const h of G.hubs.values()) {                                      // rails: each hub's track to the hub it leads to
+        const to = h.out >= 0 ? hubPos(h.out) : null;
+        if (!to || distToSegment(cam.x, cam.y, h.x, h.y, to[0], to[1]) > MAP_RADIUS + 2) continue;
+        const [ax, ay] = at(h.x, h.y), [bx, by] = at(to[0], to[1]);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+        ctx.strokeStyle = "rgba(20,24,30,0.9)"; ctx.lineWidth = Math.max(3, px * 0.9); ctx.stroke();   // dark edge
+        ctx.strokeStyle = "#c4ccd8"; ctx.lineWidth = Math.max(1.5, px * 0.45); ctx.stroke();           // the rail
+    }
     for (const c of chunks.values()) {                                      // gems left to mine
         for (const g of c.gems) {
             const key = g[0] + "," + g[1];
@@ -270,7 +279,7 @@ function drawHUD(cam, W, H) {
     hudHit.lens = { x: M + topH + gap0, y: M, w: topH, h: topH };
     drawSquareButton(M + 2 * (topH + gap0), M, topH, "map", G.showMap);
     hudHit.minimap = { x: M + 2 * (topH + gap0), y: M, w: topH, h: topH };
-    if (G.showMap) drawMinimap(cam, M, M + topH + gap0, Math.max(96, Math.min(190, S * 0.3)));
+    if (G.showMap) drawMinimap(cam, M, M + topH + gap0, Math.max(192, Math.min(380, S * 0.6, W * 0.8)));
 
     // Bottom centre: [hub | ship]  [about-face]  [travel], thumb-sized on touch.
     const fbR = touch ? Math.max(28, Math.min(46, S * 0.075)) : Math.max(20, Math.min(38, S * 0.05));
