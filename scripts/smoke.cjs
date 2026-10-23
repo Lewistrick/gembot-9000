@@ -182,7 +182,7 @@ function freePort() {
             click(hudHit.travel);                         // switch on
             out.travelOn = travelMode === true && !!travelTargets();
             await frames();
-            out.travelLabel = !!hudHit.travel && !!hudHit.ship && !hudHit.placeHub;
+            out.travelLabel = !!hudHit.travel && !!hudHit.ship && !hudHit.placeHub && !hudHit.flip;   // no about-face button on top of the tracks
             out.travelOne = tapTrack(0) && sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0;
             sent.length = 0;
             out.travelStays = travelMode === true;      // still on after a tap
@@ -195,7 +195,7 @@ function freePort() {
             const touch = (type) => canvas.dispatchEvent(new PointerEvent(type,
                 { pointerId: 31, pointerType: "touch", clientX: r0.left + px, clientY: r0.top + py, bubbles: true }));
             touch("pointerdown"); touch("pointerup");
-            canvas.dispatchEvent(new MouseEvent("click", { clientX: r0.left + px, clientY: r0.top + py, bubbles: true }));
+            canvas.dispatchEvent(new PointerEvent("click", { pointerType: "touch", clientX: r0.left + px, clientY: r0.top + py, bubbles: true }));   // what a real finger produces
             window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowUp", bubbles: true }));
             out.travelTouchRides = sent.length === 1 && sent[0].action === "ride" && sent[0].to === 0;
             out.travelNoDrive = !held.up && !steer.some((m) => m.up);
@@ -243,7 +243,7 @@ function freePort() {
         ["travelOff", "travel mode starts off"],
         ["travelIdleTap", "tapping the map does nothing while travel mode is off"],
         ["travelOn", "TRAVEL switches travel mode on"],
-        ["travelLabel", "travel mode keeps the Ship and Travel buttons"],
+        ["travelLabel", "travel mode keeps Ship and Travel but hides the about-face button"],
         ["travelOne", "tapping a track in travel mode rides along it"],
         ["travelStays", "travel mode stays on after a ride tap"],
         ["travelNoSteer", "steering is off in travel mode"],
