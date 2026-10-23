@@ -8,7 +8,7 @@ mechanic removed. A player never dies; the only way to stop is to brake.
 import math
 from dataclasses import dataclass, field
 
-from .grid import World
+from .grid import FloorMap
 
 TICK = 0.05  # physics/stream step in seconds (20 Hz)
 MAX_SPEED = 15.0  # tiles/second (must keep speed*TICK < 1 so we can't skip tiles)
@@ -29,6 +29,13 @@ KNOCK_KEEP = 0.88  # knockback velocity retained per tick (~0.35 s to fade out)
 FLIP_TIME = 0.6  # seconds to complete the half-turn
 FLIP_RATE = math.pi / FLIP_TIME  # radians/second while turning around
 FLIP_SLOW = 0.88  # speed retained per tick during the turn
+
+# Drilling: hold forward into a wall and the tile in front is bored out.
+DRILL_COST = 1  # cargo points burned per drilled tile
+DRILL_TIME = 1.0  # seconds per tile when you can pay the cost
+DRILL_TIME_BROKE = 3.0  # seconds per tile with no cargo (free, but slow: never stuck)
+DRILL_HEAD_ON = 0.7  # fraction of the motion that must point into the wall
+DRILL_GRACE = 3  # ticks without contact before the progress is forgotten
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -78,6 +85,13 @@ class Player:
     notices: list[dict] = field(default_factory=list)  # private messages to send
     ride: Ride | None = None  # set while riding the rails (no steering, no mining)
 
+    drill_target: tuple[int, int] | None = None  # wall tile being drilled
+    drill_progress: float = 0.0  # 0..1 of the current tile
+    drill_gap: int = 0  # ticks since the drill last touched the wall
+    drilled_tile: tuple[int, int] | None = (
+        None  # set when a tile finishes; the game takes it
+    )
+
     @property
     def score(self) -> int:
         """Leaderboard score: banked gems plus tolls earned, minus what was spent."""
@@ -101,10 +115,30 @@ class Player:
         self.speed = 0.0
         self.kx = self.ky = self.bump = 0.0
         self.flip_remaining = 0.0
+        self.drill_target, self.drill_progress, self.drill_gap = None, 0.0, 0
         self.release_controls()
 
-    def step(self, world: World, dt: float = TICK) -> None:
+    @property
+    def drilling(self) -> bool:
+        """True while the drill is biting into a wall."""
+        return self.drill_progress > 0.0 and self.drill_gap == 0
+
+    def _press_drill(self, tile: tuple[int, int], dt: float) -> None:
+        """One tick of the drill pressed against ``tile``; flags it when it is through."""
+        if tile != self.drill_target:
+            self.drill_target, self.drill_progress = tile, 0.0
+        self.drill_gap = 0
+        seconds = DRILL_TIME if self.cargo >= DRILL_COST else DRILL_TIME_BROKE
+        self.drill_progress += dt / seconds
+        if self.drill_progress >= 1.0:
+            self.drilled_tile = tile
+            self.drill_progress = 0.0
+
+    def step(self, world: FloorMap, dt: float = TICK) -> None:
         """Advance the vehicle one physics step: steer, throttle/brake, move."""
+        self.drill_gap += 1
+        if self.drill_gap > DRILL_GRACE:  # the drill lost the wall: start over
+            self.drill_target, self.drill_progress = None, 0.0
         if self.flip_remaining > 0.0:
             # About-face: rotate steadily toward the reversed heading and coast
             # down to a near-stop, ignoring steer/throttle until it finishes.
@@ -158,13 +192,23 @@ class Player:
         by = not floor(round(self.x), round(self.y + dy))  # blocked in y
         if not bx and not by:  # clipped a diagonal corner
             bx = by = True
+        total = math.hypot(vx, vy) or 1e-9
+        into = math.hypot(vx if bx else 0.0, vy if by else 0.0)
+        if self.up and self.flip_remaining == 0.0 and into / total >= DRILL_HEAD_ON:
+            # Pushing straight into the rock with the throttle held: the drill
+            # takes the hit (no bounce) and bores into the tile in front.
+            self.speed = 0.0
+            self.kx = self.ky = 0.0
+            tx = round(self.x + dx) if bx else round(self.x)
+            ty = round(self.y + dy) if by else round(self.y)
+            self._press_drill((tx, ty), dt)
+            return
         if not bx:  # slide along whichever axis is still open
             self.x += dx
         if not by:
             self.y += dy
         # Kill the into-wall part of the drive, keep the glancing part.
-        total = math.hypot(vx, vy) or 1e-9
-        self.bump = math.hypot(vx if bx else 0.0, vy if by else 0.0)
+        self.bump = into
         tang = 0.0 if (bx and by) else (abs(vy) if bx else abs(vx))
         self.speed *= HIT_SLOW * (tang / total)
         # Reflect the blocked velocity back out as knockback (next tick).

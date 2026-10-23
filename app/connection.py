@@ -11,6 +11,7 @@ Messages, server -> client (``t`` is the type):
 * ``chunk``    one terrain chunk: packed floor bits, gem sites, already-mined gems
 * ``drop``     chunks the client may forget (it is far from them now)
 * ``mined``    gem cells mined since the last message (everyone's)
+* ``drilled`` wall tiles drilled out since the last message (now floor, for everyone)
 * ``meta``     name / chat / hue for robots that just came into view or changed
 * ``tick``     your pose, cargo and score; every other tick also nearby robots
 * ``hubs``     rail hubs (all of them on join, then any new or re-linked ones)
@@ -74,6 +75,7 @@ class Connection:
         self.cols = self.rows = 41
         self.sent: set[tuple[int, int]] = set()
         self.mined_cursor = len(game.mined_log)
+        self.drilled_cursor = len(game.drilled_log)
         self.ann_cursor = len(game.announcements)
         self.known: dict[int, int] = {}  # robot num -> meta_version already sent
         self.board_epoch = -1
@@ -175,6 +177,9 @@ class Connection:
             "gems": [[x, y, v] for (x, y), v in gems.items()],
             "mega": [[x, y] for (x, y) in gems if (x, y) in mega],
             "mined": [[x, y] for (x, y) in gems if (x, y) in g.mined],
+            "drilled": [
+                [x, y] for (x, y) in g.drilled if x // CHUNK == cx and y // CHUNK == cy
+            ],
         }
 
     def frame(self, chunk_budget: list[int]) -> tuple[list[dict], dict]:
@@ -227,6 +232,14 @@ class Connection:
                 {"t": "mined", "c": [list(c) for c in g.mined_log[self.mined_cursor :]]}
             )
             self.mined_cursor = len(g.mined_log)
+        if self.drilled_cursor < len(g.drilled_log):
+            out.append(
+                {
+                    "t": "drilled",
+                    "c": [list(c) for c in g.drilled_log[self.drilled_cursor :]],
+                }
+            )
+            self.drilled_cursor = len(g.drilled_log)
         while self.ann_cursor < len(g.announcements):
             out.append({"t": "announce", "text": g.announcements[self.ann_cursor][1]})
             self.ann_cursor += 1
@@ -301,6 +314,8 @@ class Connection:
             "b": round(p.bump, 2),
             "r": 1 if p.ride else 0,
         }
+        if p.drilling:
+            tick["d"] = round(p.drill_progress, 2)  # drill progress 0..1 for the HUD
         if update:  # other robots update at 10 Hz
             tick["o"] = [g.row(q) for q in near]
             tick["k"] = [

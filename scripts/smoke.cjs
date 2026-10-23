@@ -129,6 +129,19 @@ async function waitFor(page, fn, what, timeout = 8000) {
     check(await a.evaluate(() => !buildMode && !overlayOpen()), "build mode ends cleanly");
     await a.evaluate(() => { G.hubs.clear(); G.carts.clear(); });
 
+    // --- Drilling: tiles become floor, rubble and sparks draw without errors ---
+    await a.evaluate(() => {
+        HANDLERS.drilled({ c: [[50, 50], [51, 50]] });
+        G.drill = 0.6;
+        G.cargo = 3;
+    });
+    check(await a.evaluate(() => drilled.size === 2 && isFloor(50, 50) && isFloor(51, 50)),
+        "drilled tiles count as floor on the client");
+    await a.evaluate(() => { G.others.set(99, { from: { x: 2, y: 2, h: 0 }, to: { x: 2, y: 2, h: 0 }, t0: performance.now(), f: 2 }); G.meta.set(99, { n: 99, id: "zz", name: "Drillbot", chat: "", hue: 40 }); });
+    await sleep(300);   // frames with the progress ring, sparks and another robot drilling
+    await a.evaluate(() => { G.others.delete(99); G.meta.delete(99); G.drill = 0; clearWorld(); });
+    check(await a.evaluate(() => drilled.size === 0), "leaving the world forgets drilled tiles");
+
     // --- Status + leave ---
     const status = await (await fetch(`http://localhost:${PORT}/api/status`)).json();
     check(status.online === 2, `status reports 2 online (got ${status.online})`);

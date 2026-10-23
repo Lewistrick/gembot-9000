@@ -37,6 +37,11 @@ Pick a nickname on the menu and join. The map rotates to your heading.
   hide 60–400 tiles out; the radar shows them from far away and mining one is announced.
 - **Score.** Cargo only scores once **delivered to the base**: drive into the dashed ring
   around the depot, ride in, or ship it. Undelivered cargo is lost at midnight.
+- **Drilling.** Hold forward straight into a wall and your drill bores out the tile in front:
+  about 1 s and **1 point of cargo** per tile, or **free but 3 s per tile with no cargo**, so
+  nobody is ever stuck (some days start in a sealed pocket, 3-7 drilled tiles from the open
+  cave). A drilled tile is floor for **everyone** (and for tracks and hubs) for the rest of
+  the day. Releasing forward restarts the tile; the base itself can't be drilled.
 - **Rails.** Park on a hub (or the base) and build a **straight track** (any angle, floor
   only, ≤ 60 tiles) to a new or existing hub. A **hub costs 25**, track **1 per tile**, paid
   from your score. Each hub has **one outgoing track** and any number of incoming ones, and
@@ -72,7 +77,7 @@ than a week is pruned, winners are kept forever.
 ```
 app/
   grid.py        # terrain: numpy noise + cellular automata, per-chunk gems, mega gems
-  player.py      # robot physics (steer, throttle, brake, bounce), cargo and score parts
+  player.py      # robot physics (steer, throttle, brake, bounce, drilling), cargo and score parts
   rail.py        # hubs, straight tracks, loop-free routing, tolls (pure logic)
   game.py        # one day: players, mining, delivery, rail actions, carts, rush hour, board
   connection.py  # per-client protocol: what each client is sent, and how input is applied

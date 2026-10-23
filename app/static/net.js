@@ -17,7 +17,7 @@ const G = {
     colors: null,              // base palette from welcome
     pal: null,                 // palette drifted by distance (from board messages)
     x: 0, y: 0, h: 0, speed: 0,
-    cargo: 0, score: 0, flipping: false, bump: 0,
+    cargo: 0, score: 0, flipping: false, bump: 0, drill: 0,   // drill: progress 0..1 while boring a wall
     rank: null, online: 0, top: [], mult: 1,
     left: 0, leftAt: 0,        // seconds until midnight, as of performance.now() == leftAt
     others: new Map(),         // num -> { from, to, t0 } (interpolated positions)
@@ -148,6 +148,7 @@ const HANDLERS = {
     chunk(m) { addChunk(m); },
     drop(m) { dropChunks(m.c); },
     mined(m) { for (const p of m.c) mined.add(p[0] + "," + p[1]); },
+    drilled(m) { addDrilled(m.c); },
     meta(m) { for (const e of m.list) G.meta.set(e.n, e); },
     tick(m) {
         camFrom = haveCam ? currentCam() : { x: m.x, y: m.y, h: m.h };
@@ -156,7 +157,7 @@ const HANDLERS = {
         segDur = G.tickMs;
         haveCam = true;
         G.x = m.x; G.y = m.y; G.h = m.h; G.speed = m.s;
-        G.cargo = m.c; G.score = m.sc; G.flipping = m.f; G.riding = !!m.r;
+        G.cargo = m.c; G.score = m.sc; G.flipping = m.f; G.riding = !!m.r; G.drill = m.d || 0;
         if (m.b) { G.bump = m.b; onBump(m.b); }
         if (m.o) {
             const now = performance.now(), seen = new Set();
@@ -164,8 +165,8 @@ const HANDLERS = {
                 seen.add(r[0]);
                 const to = { x: r[1], y: r[2], h: r[3] };
                 const o = G.others.get(r[0]);
-                if (o) { o.from = otherPos(o, now); o.to = to; o.t0 = now; }
-                else G.others.set(r[0], { from: to, to, t0: now });
+                if (o) { o.from = otherPos(o, now); o.to = to; o.t0 = now; o.f = r[4]; }
+                else G.others.set(r[0], { from: to, to, t0: now, f: r[4] });
             }
             for (const k of G.others.keys()) if (!seen.has(k)) G.others.delete(k);
             const keep = new Set();
