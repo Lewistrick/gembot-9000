@@ -136,9 +136,17 @@ function freePort() {
             railTap(mx, my + 1);
             out.hubBuilt = sent.some((m) => m.action === "build_hub" && m.to === 1 && m.x === gx && m.y === gy) && !railMode;
             sent.length = 0;
-            HANDLERS.hubopts({ x: gx, y: gy, opts: [{ to: 0, x: 0, y: 0, cost: 40, short: 0, len: 15, linked: true }] });
+            HANDLERS.hubopts({ x: gx, y: gy, opts: [
+                { to: 0, x: 0, y: 0, cost: 40, short: 0, len: 15, linked: true },
+                { to: 1, x: gx + 12, y: gy, cost: 37, short: 0, len: 12, linked: true }] });
             railTap(W - 4, 4);
             out.hubCloses = !railMode && sent.length === 0;
+
+            // Only one possible track: nothing to pick, it is built straight away.
+            HANDLERS.hubopts({ x: gx, y: gy, opts: [{ to: 1, x: gx + 12, y: gy, cost: 37, short: 0, len: 12, linked: true }] });
+            out.singleBuilds = !railMode && sent.length === 1 && sent[0].action === "build_hub" && sent[0].to === 1
+                && sent[0].x === gx && sent[0].y === gy;
+            sent.length = 0;
 
             // The pay dialog: the player must agree before score is used.
             HANDLERS.pay({ label: "Build a hub and track", cost: 45, cargo: 30, score: 15, retry: { action: "build_hub", to: 0, x: 1, y: 2 } });
@@ -186,6 +194,7 @@ function freePort() {
         ["hubSegs", "HUB offers each candidate as a track"],
         ["hubBuilt", "tapping a ghost track builds that one"],
         ["hubCloses", "tapping outside every track closes the HUB menu"],
+        ["singleBuilds", "a single possible track is built without asking to pick it"],
         ["payOpen", "a pay request opens the dialog with the missing amount"],
         ["payCancel", "cancelling the dialog pays nothing"],
         ["payYes", "agreeing re-sends the action with pay_score"],
