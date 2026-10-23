@@ -25,7 +25,7 @@ const G = {
     hubs: new Map(),           // id -> { id, x, y, bn (builder num), out (hub id or -1) }
     carts: new Map(),          // id -> { from, to, t0, a } (interpolated like robots)
     riding: false,
-    light: [100, 250, 300],    // tiles from the nearest hub: starts to darken, pitch dark, lost (from welcome)
+    light: [100, 250, 350],    // tiles from the nearest hub: starts to darken, pitch dark, lost (from welcome)
     lightD: 0,                 // distance to the nearest hub (the base counts), updated every frame
     dark: 0,                   // how dark the screen is right now, 0..1 (eased)
     showArrows: false,         // lens: arrows to the base, nearest gem and nearest hub

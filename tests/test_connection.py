@@ -32,7 +32,7 @@ def test_welcome_describes_the_world() -> None:
     assert (
         w["hub_cost"] == 25 and w["max_track"] == 60
     )  # the client prices hubs with these
-    assert w["light"] == [100.0, 250.0, 300.0]  # the client darkens by these
+    assert w["light"] == [100.0, 250.0, 350.0]  # the client darkens by these
     assert w["you"]["id"] == "a" and w["you"]["hue"] == hue_for(1)
 
 

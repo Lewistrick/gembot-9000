@@ -278,7 +278,7 @@ def test_lost_far_from_every_hub_returns_to_base_with_half_the_cargo(
     game.world = OpenWorld("t")
     p = game.join("a", "Ann")
     assert p is not None
-    p.place(301, 0)
+    p.place(351, 0)
     p.cargo = 11
     for _ in range(LIGHT_EVERY):  # the light is checked every few ticks
         game.tick()
@@ -297,20 +297,20 @@ def test_a_hub_within_reach_keeps_the_robot_found(game: Game) -> None:
     for _ in range(2 * LIGHT_EVERY):
         game.tick()
     assert (p.x, p.y) == (650, 0) and p.cargo == 10 and not lost_notices(p)
-    p.place(701, 0)  # 301 from the hub
+    p.place(751, 0)  # 351 from the hub
     for _ in range(LIGHT_EVERY):
         game.tick()
     assert math.hypot(p.x, p.y) <= BASE_RADIUS and lost_notices(p)
 
 
-def test_299_tiles_from_the_base_is_still_found(game: Game) -> None:
+def test_349_tiles_from_the_base_is_still_found(game: Game) -> None:
     game.world = OpenWorld("t")
     p = game.join("a", "Ann")
     assert p is not None
-    p.place(299, 0)
+    p.place(349, 0)
     for _ in range(2 * LIGHT_EVERY):
         game.tick()
-    assert (p.x, p.y) == (299, 0) and not lost_notices(p)
+    assert (p.x, p.y) == (349, 0) and not lost_notices(p)
 
 
 def test_riding_players_are_never_lost(game: Game) -> None:
