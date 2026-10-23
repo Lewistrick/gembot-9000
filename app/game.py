@@ -368,6 +368,36 @@ class Game:
     def _say(self, player: Player, ok: bool, text: str) -> None:
         player.notices.append({"t": "rail", "ok": ok, "msg": text})
 
+    @staticmethod
+    def _funds(player: Player) -> int:
+        """Everything a player can spend: cargo first, then banked score."""
+        return player.cargo + max(0, player.score)
+
+    @staticmethod
+    def _split(player: Player, cost: int) -> tuple[int, int]:
+        """``cost`` as ``(paid from cargo, still owed)``: payments are cargo-first."""
+        from_cargo = min(player.cargo, cost)
+        return from_cargo, cost - from_cargo
+
+    def _ask_to_pay(
+        self, player: Player, label: str, cost: int, short: int, retry: dict
+    ) -> None:
+        """Cargo does not cover ``cost``: ask before dipping into banked score.
+
+        The client shows ``cost`` split as cargo + ``short`` from score, and
+        re-sends ``retry`` with ``pay_score`` set if the player agrees.
+        """
+        player.notices.append(
+            {
+                "t": "pay",
+                "label": label,
+                "cost": cost,
+                "cargo": cost - short,
+                "score": short,
+                "retry": retry,
+            }
+        )
+
     def hub_under(self, player: Player) -> Hub | None:
         """The hub the player is parked on (slow enough to count as stopped)."""
         if player.speed > 2.5 or player.ride is not None:
@@ -400,7 +430,7 @@ class Game:
         if not self._standing_still(player):
             return self._say(player, False, "Stand still to place a hub.")
         x, y = round(player.x), round(player.y)
-        quotes, why = self.rail.hub_options(self, x, y, player.score)
+        quotes, why = self.rail.hub_options(self, x, y, self._funds(player))
         if not quotes:
             return self._say(player, False, why)
         opts = []
@@ -413,14 +443,22 @@ class Game:
                     "x": target.x,
                     "y": target.y,
                     "cost": q.cost,
+                    "short": self._split(player, q.cost)[
+                        1
+                    ],  # part that would come from score
                     "len": round(q.length, 1),
                     "linked": self.rail.root(target.id) == 0,
                 }
             )
         player.notices.append({"t": "hubopts", "x": x, "y": y, "opts": opts})
 
-    def build_hub(self, pid: str, to: int, x: int, y: int) -> None:
-        """Place a hub on the player's tile with a track leading to hub ``to``."""
+    def build_hub(
+        self, pid: str, to: int, x: int, y: int, pay_score: bool = False
+    ) -> None:
+        """Place a hub on the player's tile with a track leading to hub ``to``.
+
+        Paid from cargo first; any shortfall comes from banked score, but only
+        after the player has agreed (``pay_score``)."""
         player = self._rail_player(pid)
         if player is None:
             return
@@ -431,12 +469,19 @@ class Game:
             return self._say(player, False, "You moved. Place the hub again.")
         if to not in self.rail.hubs:
             return self._say(player, False, "That hub is gone.")
-        q = self.rail.quote_track(self, to, x, y, player.score)
+        q = self.rail.quote_track(self, to, x, y, self._funds(player))
         if q.kind != "track":  # standing on a hub: that would only link two hubs
             return self._say(player, False, "Too close to another hub.")
         if not q.ok:
             return self._say(player, False, q.why)
-        player.spent += q.cost
+        from_cargo, short = self._split(player, q.cost)
+        if short and not pay_score:
+            retry = {"action": "build_hub", "to": to, "x": x, "y": y}
+            return self._ask_to_pay(
+                player, "Build a hub and track", q.cost, short, retry
+            )
+        player.cargo -= from_cargo
+        player.spent += short
         self.rail.apply(q, pid)
         self._say(player, True, f"Hub built (-{q.cost})")
         player.notices.append({"t": "built"})
@@ -449,21 +494,33 @@ class Game:
         origin = self.hub_under(player)
         if origin is None:
             return self._say(player, False, "Stop on a hub to build a track from it.")
-        q = self.rail.quote_track(self, origin.id, x, y, player.score)
+        q = self.rail.quote_track(self, origin.id, x, y, self._funds(player))
         if not confirm:
             player.notices.append(self._quote_msg(q, origin))
         elif not q.ok:
             self._say(player, False, q.why)
         else:
-            player.spent += q.cost
+            from_cargo, short = self._split(player, q.cost)
+            player.cargo -= from_cargo  # cargo first; confirming agrees to the rest
+            player.spent += short
             self.rail.apply(q, pid)
             self._say(player, True, f"Built (-{q.cost})")
             player.notices.append({"t": "built"})
 
-    def _pay_tolls(self, payer: Player, builders: list[str], from_cargo: bool) -> None:
-        """Move one point per toll from the payer's cargo to each hub's builder."""
-        if from_cargo:
-            payer.cargo -= len(builders)
+    def _pay_tolls(
+        self,
+        payer: Player,
+        builders: list[str],
+        from_cargo: int = 0,
+        from_score: int = 0,
+    ) -> None:
+        """Pay one point per toll to each hub's builder.
+
+        ``from_cargo`` / ``from_score`` say how much of it the payer covers out
+        of cargo and out of banked score (a shipment passes 0 and 0: its tolls
+        were already taken out of the shipment)."""
+        payer.cargo -= from_cargo
+        payer.spent += from_score
         owed: dict[str, int] = {}
         for b in builders:
             owed[b] = owed.get(b, 0) + 1
@@ -512,8 +569,11 @@ class Game:
             }
         )
 
-    def ride(self, pid: str, to: int) -> None:
-        """Ride the rails to another hub of the same network (tolls come out of cargo)."""
+    def ride(self, pid: str, to: int, pay_score: bool = False) -> None:
+        """Ride the rails to another hub of the same network.
+
+        Tolls come out of cargo first; if that is not enough the player is asked
+        whether to pay the rest from banked score (``pay_score``)."""
         player = self._rail_player(pid)
         if player is None:
             return
@@ -524,13 +584,18 @@ class Game:
         if route is None:
             return self._say(player, False, "That hub is not on this network.")
         tolls = self.rail.toll_builders(route, pid)
-        if player.cargo < len(tolls):
+        from_cargo, short = self._split(player, len(tolls))
+        if short > max(0, player.score):
             return self._say(
                 player,
                 False,
-                f"No cargo, no ride: the tolls are {len(tolls)} and you carry {player.cargo}.",
+                f"Not enough for the tolls ({len(tolls)}): you carry {player.cargo} "
+                f"and have {player.score} banked.",
             )
-        self._pay_tolls(player, tolls, from_cargo=True)
+        if short and not pay_score:
+            retry = {"action": "ride", "to": to}
+            return self._ask_to_pay(player, "Travel tolls", len(tolls), short, retry)
+        self._pay_tolls(player, tolls, from_cargo=from_cargo, from_score=short)
         player.place(float(here.x), float(here.y))
         player.ride = Ride(self.rail.points(route)[1:])
         player.speed = RIDE_SPEED
@@ -558,7 +623,7 @@ class Game:
                 player, False, f"The tolls ({len(tolls)}) would eat the whole shipment."
             )
         value = player.cargo - len(tolls)
-        self._pay_tolls(player, tolls, from_cargo=False)
+        self._pay_tolls(player, tolls)  # taken out of the shipment itself
         player.cargo = 0
         pts = self.rail.points(route)
         self.carts.append(

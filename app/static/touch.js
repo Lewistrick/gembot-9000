@@ -5,6 +5,7 @@
 let touchMode = false;          // becomes true on the first touch (enables brake-on-release)
 let downOnHud = false;          // did the latest touch start on a HUD button? (so a click is a tap)
 const touches = new Map();      // pointerId -> "L" | "R"
+const downAt = new Map();       // pointerId -> { x, y, t } to tell a quick tap from a steering hold
 
 function inRect(b, x, y) { return b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; }
 function onHudButton(x, y) {
@@ -28,9 +29,10 @@ canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse") return;
     touchMode = true;
     const [x, y, w] = localPoint(e);
-    downOnHud = onHudButton(x, y) || !!buildMode;     // in build mode a touch is a tap, not steering
+    downOnHud = onHudButton(x, y) || !!railMode;      // while picking a track a touch is a tap, not steering
     if (downOnHud) return;
     touches.set(e.pointerId, x < w / 2 ? "L" : "R");
+    downAt.set(e.pointerId, { x, y, t: performance.now() });
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     sendControls();
 });
@@ -40,11 +42,18 @@ canvas.addEventListener("pointermove", (e) => {
     const side = x < w / 2 ? "L" : "R";
     if (touches.get(e.pointerId) !== side) { touches.set(e.pointerId, side); sendControls(); }
 });
-function endTouch(e) {
+function endTouch(e, cancelled) {
+    const d = downAt.get(e.pointerId);
+    downAt.delete(e.pointerId);
     if (touches.delete(e.pointerId)) sendControls();
+    // A quick press-and-release on a robot is a tap (edit your message / open their menu).
+    if (!cancelled && d && performance.now() - d.t < 250 && typeof tapRobot === "function") {
+        const [x, y] = localPoint(e);
+        if (Math.hypot(x - d.x, y - d.y) < 12 && canSteer()) tapRobot(x, y);
+    }
 }
-canvas.addEventListener("pointerup", endTouch);
-canvas.addEventListener("pointercancel", endTouch);
+canvas.addEventListener("pointerup", (e) => endTouch(e, false));
+canvas.addEventListener("pointercancel", (e) => endTouch(e, true));
 
 // Keyboard state lives here too so both input methods share one sender.
 const held = { up: false, down: false, left: false, right: false };

@@ -55,7 +55,7 @@
         <p>Drive over a gem to mine it. It goes into your <b>cargo</b>, and it's gone for everyone
             for the rest of the day. Cargo only <b>scores once you bring it to the base</b> (the
             dashed ring around the depot at the centre). Gems get richer, but rarer, the farther from
-            the base you go. Watch the radar for the glowing amber <b>mega gems</b>.</p>
+            the base you go. Mega gems glow amber, and show up the same way on the minimap.</p>
 
         <h3>Drilling through walls</h3>
         <p>You're a mining robot: <b>hold forward into a wall</b> and your drill bores through the
@@ -65,21 +65,23 @@
             for the rest of the day. Let go of forward to stop. You can't drill inside the base.</p>
 
         <h3>Rails: hubs, tracks and tolls</h3>
-        <p>Hauling gems home is slow, so build a rail. <b>Park on a hub</b> (or the base) and a
-            panel pops up. <b>Build track</b> lets you tap a spot: you'll see a straight line and its
-            cost, and tapping the same spot again builds it. A new <b>hub costs 25</b> and each tile
-            of <b>track costs 1</b>, paid from your <b>score</b>. Tracks are straight (diagonals
-            are fine), up to 60 tiles, and every tile must be floor. Tap an existing hub instead to
-            link to it; loops aren't allowed, so every hub has one way home.</p>
-        <p><b>Rails</b> opens the network map. Tap a hub and <b>ride</b> there (very fast, either
-            way), or <b>ship your cargo</b> to the base on its own cart, which scores for you when it
-            arrives. Everyone shares every hub, and there's a <b>toll</b>: each hub built by someone
-            else on your route costs <b>1 point of cargo</b>, paid to its builder. Your own hubs are
-            free. No cargo means no ride!</p>
-        <p>You can also place a hub right where you <b>stand still</b> on an empty tile: tap
-            <b>Place hub</b> (or press <b>B</b>). You're offered the nearest hubs it can lead to, each
-            with its price; pick one and the hub and its track are built together. A hub never exists
-            without a track.</p>
+        <p>Hauling gems home is slow, so build a rail. Stand still on an empty tile and tap the
+            <b>HUB</b> button next to the turnaround button (or press <b>B</b>). It only shows up
+            if you could pay for a hub. The possible tracks appear as <b>transparent tracks</b>
+            leading to nearby hubs, each with its price: <b>tap the one you want</b> and the hub is
+            built together with that track, or tap anywhere else to cancel. A hub costs <b>25</b>
+            and each tile of track <b>1</b>. Tracks are straight (diagonals are fine), up to 60 tiles,
+            and every tile must be floor.</p>
+        <p><b>Park on a hub</b> (or the base) and you can do exactly two things: <b>SHIP</b> your
+            gems to the base on their own cart, which scores for you when it arrives, or
+            <b>TRAVEL</b> to the next hub. With one track from here you simply go there; with several
+            you <b>tap the track</b> you want (tap elsewhere to cancel). Everyone shares every hub.</p>
+        <p><b>Paying:</b> everything you buy is paid from your <b>cargo first</b>. If your cargo
+            doesn't cover it you're asked whether to pay the missing amount from your <b>banked
+            gems</b> (your score); nothing is taken from your score unless you agree. There's also
+            a <b>toll</b>: each hub built by someone else at either end of your hop costs <b>1</b>,
+            paid to its builder (your own hubs and the base are free). Shipments pay their tolls out
+            of the shipment itself.</p>
 
         <h3>Day, rush hour &amp; winners</h3>
         <p>The day ends at midnight; cargo you haven't delivered is lost. In the <b>last hour</b>
@@ -87,9 +89,18 @@
             lists past winners.</p>
 
         <h3>Chat &amp; blocking</h3>
-        <p>Press <b>Enter</b> (or the speech-bubble button) and type a message; it floats above your
-            robot until you change or clear it. Open the <b>players</b> panel (<b>Tab</b> or the
-            two-heads button) to <b>block</b> someone's chat bubbles. It only affects what you see.</p>
+        <p><b>Tap your own robot</b> (or press <b>Enter</b>) to type a message; it floats above your
+            robot until you change or clear it. <b>Tap another robot</b> to open its menu and
+            <b>block</b> their chat bubbles. <b>Tab</b> (or tapping your score) opens a list of nearby
+            players and today's top 10. Blocking only affects what you see.</p>
+        <h3>Your dashboard</h3>
+        <p>Two buttons next to the menu button help you find your way. The <b>lens</b> draws three
+            arrows around your robot: <b>yellow</b> to the base, one in the <b>colour of the gems</b> to
+            the nearest gem, and <b>gray</b> to the nearest hub, each with its distance in tiles. Click it
+            again to hide them. The <b>map</b> button shows a <b>minimap</b> around you with walls, floor,
+            hubs (gray), the base (yellow) and the gems left to mine. The pane in the
+            top-right shows the <b>cargo</b> you carry (it only counts once it's delivered to the base),
+            your banked <b>score</b> and rank, and how far the base is.</p>
 
         <h3>Staying in</h3>
         <p>If you do nothing for 10 minutes you're removed to make room for others. Your score and
@@ -125,41 +136,24 @@
     <button id="chatCancel" class="btn ghost small">&times;</button>
 </div>
 
-<div id="hubpanel" class="hubpanel hidden">
-    <div id="hubTitle" class="hubtitle"></div>
+<div id="paybar" class="chatbar pickbar hidden">
+    <div id="payTitle" class="picktitle"></div>
+    <div id="payText" class="paytext"></div>
     <div class="hubbtns">
-        <button id="hubNet" class="btn big small">Rails &#9656;</button>
-        <button id="hubBuild" class="btn ghost small">Build track</button>
+        <button id="payYes" class="btn big small">Pay</button>
+        <button id="payNo" class="btn ghost small">Cancel</button>
     </div>
 </div>
 
-<div id="placepanel" class="hubpanel hidden">
-    <button id="placeHub" class="btn big small">Place hub (B)</button>
-</div>
-
-<div id="hubpicker" class="chatbar pickbar hidden">
-    <div class="picktitle">Where should the cargo go?</div>
-    <div id="pickList" class="picklist"></div>
-    <button id="pickCancel" class="btn ghost small">Cancel</button>
-</div>
-
-<div id="buildbar" class="chatbar hidden">
-    <span id="buildMsg" class="buildmsg">Tap a spot for a new hub, or tap a hub to link to it.</span>
-    <button id="buildOk" class="btn big small" disabled>Build</button>
-    <button id="buildCancel" class="btn ghost small">Cancel</button>
-</div>
-
-<section id="netmap" class="screen hidden">
-    <h2 class="ptitle">Rail network</h2>
-    <canvas id="nmCanvas" class="nmcanvas"></canvas>
-    <p id="nmInfo" class="noticetext">Tap a hub.</p>
-    <div class="nmbtns">
-        <button id="nmRide" class="btn big small" disabled>Ride</button>
-        <button id="nmBase" class="btn ghost small">Ride to base</button>
-        <button id="nmShip" class="btn ghost small">Ship cargo</button>
-        <button id="nmClose" class="btn ghost small">Close</button>
+<div id="playermenu" class="pmenu hidden">
+    <div id="pmName" class="pmname"></div>
+    <div id="pmChat" class="pmchat"></div>
+    <div class="hubbtns">
+        <button id="pmBlock" class="btn ghost small">Block</button>
+        <button id="pmClose" class="btn ghost small">Close</button>
     </div>
-</section>
+    <p class="phint">Blocking hides this player's chat bubble for you.</p>
+</div>
 
 <aside id="players" class="players hidden">
     <div class="phead"><span>Players</span><button id="playersClose" class="btn ghost small">&times;</button></div>

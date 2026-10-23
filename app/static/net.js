@@ -13,7 +13,7 @@ const G = {
     state: "menu",             // menu | joining | playing | kicked | full
     connected: false,
     me: null,                  // { id, num, name, hue }
-    day: "", cap: 100, tickMs: 50, maxSpeed: 15, baseR: 10,
+    day: "", cap: 100, tickMs: 50, maxSpeed: 15, baseR: 10, hubCost: 25, maxTrack: 60,
     colors: null,              // base palette from welcome
     pal: null,                 // palette drifted by distance (from board messages)
     x: 0, y: 0, h: 0, speed: 0,
@@ -25,6 +25,8 @@ const G = {
     hubs: new Map(),           // id -> { id, x, y, bn (builder num), out (hub id or -1) }
     carts: new Map(),          // id -> { from, to, t0, a } (interpolated like robots)
     riding: false,
+    showArrows: false,         // lens: arrows to the base, nearest gem and nearest hub
+    showMap: false,            // minimap around the player
     toasts: [],                // { text, color, t0, dur }
     idleUntil: 0,              // performance.now() deadline of the idle warning, or 0
 };
@@ -44,6 +46,11 @@ if (!token) {
     token = Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2);
     try { localStorage.setItem("gembot-token", token); } catch (e) { /* ignore */ }
 }
+
+try {
+    G.showArrows = localStorage.getItem("gembot-arrows") === "1";
+    G.showMap = localStorage.getItem("gembot-map") === "1";
+} catch (e) { /* storage blocked */ }
 
 function curColors() { return G.pal || G.colors || DEFAULT_COLORS; }
 
@@ -156,6 +163,7 @@ function leaveGame() {
 const HANDLERS = {
     welcome(m) {
         G.me = m.you; G.day = m.day; G.cap = m.cap; G.tickMs = m.tick_ms;
+        G.hubCost = m.hub_cost; G.maxTrack = m.max_track;
         G.maxSpeed = m.max_speed; G.baseR = m.base; G.colors = m.colors; G.mult = m.mult;
         CS = m.chunk;
         G.state = "playing";
@@ -206,10 +214,9 @@ const HANDLERS = {
     hubs(m) { for (const r of m.list) G.hubs.set(r[0], { id: r[0], x: r[1], y: r[2], bn: r[3], out: r[4] }); },
     rail(m) { toast(m.msg, m.ok ? "#3ef07a" : "#ff6b5e", m.ok ? 2500 : 4000); },
     toll(m) { toast(`+${m.v} toll from ${m.from}`, "#3ef07a", 2500); },
-    quote(m) { onQuote(m); },
-    hubopts(m) { openHubPicker(m); },
-    built() { endBuildMode(); },
-    net(m) { openNetMap(m); },
+    hubopts(m) { openHubMode(m); },
+    pay(m) { openPayDialog(m); },
+    built() { closeRailMode(); },
     newday(m) {
         // The server closes the socket next; onclose reconnects us into the new day.
         resetClientWorld();

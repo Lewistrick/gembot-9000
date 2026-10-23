@@ -33,12 +33,6 @@ function seededRng(seed) {
     return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
 
-// Compass bearing (deg) of a world offset, matching the heading convention
-// (0 = up/-y, increasing clockwise). Forward = (sin h, -cos h).
-function bearingTo(dx, dy) { return Math.atan2(dx, -dy) * 180 / Math.PI; }
-// Signed smallest difference a - b, wrapped to (-180, 180].
-function angleDelta(a, b) { return ((a - b + 540) % 360) - 180; }
-
 const HUD = {
     neon: "#4ff2c8",
     dim: "rgba(79,242,200,0.30)",
@@ -47,7 +41,6 @@ const HUD = {
     panel: "rgba(4,12,12,0.55)",
     font: '"Courier New", ui-monospace, monospace',
 };
-const DIR = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
 function rr(x, y, w, h, r) {
     ctx.beginPath();

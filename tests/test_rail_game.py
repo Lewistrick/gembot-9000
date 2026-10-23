@@ -92,8 +92,9 @@ def test_placing_a_hub_offers_nearby_hubs_and_builds_hub_and_track_together() ->
     assert (opts["x"], opts["y"]) == (20, 6)
     assert [o["to"] for o in opts["opts"]] == [a, 0]
     assert opts["opts"][0]["cost"] == HUB_COST + 8 and opts["opts"][0]["linked"]
+    assert opts["opts"][0]["short"] == HUB_COST + 8  # no cargo: all of it from score
     before = ann.score
-    game.build_hub("ann", a, 20, 6)
+    game.build_hub("ann", a, 20, 6, pay_score=True)
     new = game.rail.hubs[max(game.rail.hubs)]
     assert (new.x, new.y, new.out, new.builder) == (20, 6, a, "ann")
     assert ann.score == before - (HUB_COST + 8) and notes(ann, "built")
@@ -154,12 +155,32 @@ def test_riding_pays_one_point_per_foreign_hub_from_cargo_to_the_builder() -> No
     assert ann.ride is not None
 
 
-def test_no_cargo_no_ride_but_your_own_hubs_are_free() -> None:
-    game, ann, _bob, a, _b = two_player_network()
+def test_a_toll_you_cannot_cover_with_cargo_is_asked_of_your_score() -> None:
+    game, ann, bob, a, _b = two_player_network()
     ann.place(28, 0)
     ann.cargo = 0
-    game.ride("ann", a)
-    assert ann.ride is None and "No cargo, no ride" in notes(ann, "rail")[-1]["msg"]
+    score, income = ann.score, bob.toll_income
+    game.ride("ann", a)  # bob's hub at the start: one toll
+    ask = notes(ann, "pay")[-1]
+    assert (
+        ann.ride is None
+        and ask["cost"] == 1
+        and ask["score"] == 1
+        and ask["cargo"] == 0
+    )
+    assert ask["retry"] == {"action": "ride", "to": a}
+    assert ann.score == score and bob.toll_income == income  # nothing charged yet
+    game.ride("ann", a, pay_score=True)
+    assert (
+        ann.ride is not None
+        and ann.score == score - 1
+        and bob.toll_income == income + 1
+    )
+
+
+def test_your_own_hubs_are_free() -> None:
+    game, ann, _bob, _a, _b = two_player_network()
+    ann.cargo = 0
     ann.place(14, 0)
     game.ride("ann", 0)  # ann's own hub then the base: free
     assert ann.ride is not None and ann.cargo == 0

@@ -4,18 +4,18 @@ const $ = (id) => document.getElementById(id);
 const menuEl = $("menu"), howtoEl = $("howto"), pauseEl = $("pause"), noticeEl = $("notice");
 const chatBarEl = $("chatbar"), chatInEl = $("chatin"), playersEl = $("players");
 const nickEl = $("nick");
-const hubPanelEl = $("hubpanel"), buildBarEl = $("buildbar"), netMapEl = $("netmap");
-const placePanelEl = $("placepanel"), pickerEl = $("hubpicker");
+const playerMenuEl = $("playermenu");
 
 let howReturnEl = menuEl;       // screen to restore when How-to's Back is pressed
 
 // ---- Which overlay is open? (the game keeps running underneath; we just stop steering) ----
 function overlayOpen() {
-    return !!buildMode || !pickerEl.classList.contains("hidden") ||
-        [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl].some((el) => !el.classList.contains("hidden"));
+    return !!railMode ||
+        [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, playerMenuEl, payBarEl].some((el) => !el.classList.contains("hidden"));
 }
 function hideAllScreens() {
-    for (const el of [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, netMapEl, pickerEl]) el.classList.add("hidden");
+    railMode = null;
+    for (const el of [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, playerMenuEl, payBarEl]) el.classList.add("hidden");
     sendControls(true);
 }
 function showScreen(el) {
@@ -121,17 +121,23 @@ chatInEl.addEventListener("keydown", (e) => {
 });
 
 
-// ---- Rail: the hub panel, the network map, and build mode ----
-let buildMode = null;           // { target: {x, y}, preview: quote } while laying a track
-let netData = null, nmSel = null, nmHits = [];
+// ---- Rail: ship cargo, travel along a track, place a hub, and paying for it ----
+// railMode: null, or the map is waiting for a tap on one of several candidate tracks:
+//   { kind: "hub", x, y, opts: [{ to, x, y, cost, short, ... }] }   (ghost tracks for a new hub)
+//   { kind: "travel", from, choices: [hubId, ...] }                 (tracks to ride along)
+let railMode = null;
+let payRetry = null;            // the action to re-send if the player agrees to pay from score
+const payBarEl = $("paybar");
 
 function clearRailUi() {
-    buildMode = null;
-    closeHubPicker();
-    placePanelEl.classList.add("hidden");
-    buildBarEl.classList.add("hidden");
-    netMapEl.classList.add("hidden");
-    hubPanelEl.classList.add("hidden");
+    railMode = null;
+    payRetry = null;
+    payBarEl.classList.add("hidden");
+}
+function closeRailMode() {
+    if (!railMode) return;
+    railMode = null;
+    sendControls(true);
 }
 
 // The hub the robot is parked on (the base counts anywhere in its depot).
@@ -149,212 +155,182 @@ function builderName(bn) {
     return m ? m.name : "another player";
 }
 
-function updateHubPanel() {
+// Caption for the hub the robot is parked on (drawn by the HUD above the bottom buttons).
+function hubCaption() {
     const h = parkedHub();
-    if (!h) { hubPanelEl.classList.add("hidden"); return; }
-    hubPanelEl.classList.remove("hidden");
-    $("hubTitle").textContent = h.id === 0 ? "The base" : `Hub #${h.id}  ·  built by ${builderName(h.bn)}`;
+    if (!h) return "";
+    return h.id === 0 ? "THE BASE" : `HUB #${h.id}  BY ${builderName(h.bn).toUpperCase()}`;
 }
-setInterval(updateHubPanel, 120);
 
-// -- Placing a hub: stand still on an empty tile, pick which hub its track leads to --
-function updatePlacePanel() {
-    const show = G.state === "playing" && !G.riding && G.speed <= 1.5 && !overlayOpen() && !parkedHub();
-    placePanelEl.classList.toggle("hidden", !show);
+// -- What the map knows about the network (from the hubs the server sent) --
+function hubNeighbours(id) {          // hubs joined to `id` by a single track
+    const list = [];
+    for (const o of G.hubs.values()) if (o.out === id) list.push(o.id);
+    const h = G.hubs.get(id);
+    if (h && h.out >= 0) list.push(h.out);
+    return list;
 }
-setInterval(updatePlacePanel, 120);
+function linkedToBase(id) {
+    for (let cur = id, n = 0; n < 1000; n++) {
+        if (cur === 0) return true;
+        const h = G.hubs.get(cur);
+        if (!h || h.out < 0) return false;
+        cur = h.out;
+    }
+    return false;
+}
+function hopToll(fromId, toId) {      // hubs of other players at the two ends (the base is free)
+    let n = 0;
+    for (const id of [fromId, toId]) {
+        const h = id === 0 ? null : G.hubs.get(id);
+        if (h && h.bn && G.me && h.bn !== G.me.num) n++;
+    }
+    return n;
+}
 
+// -- Ship gems to the base --
+function doShip() {
+    const h = parkedHub();
+    if (!h) return;
+    if (h.id === 0) toast("You are already at the base.", HUD.amber, 2500);
+    else if (G.cargo <= 0) toast("You carry no gems to ship.", HUD.amber, 2500);
+    else if (!linkedToBase(h.id)) toast("This hub isn't linked to the base.", HUD.amber, 2500);
+    else send({ action: "send_cargo" });
+}
+function canShip() {
+    const h = parkedHub();
+    return !!h && h.id !== 0 && G.cargo > 0 && linkedToBase(h.id);
+}
+
+// -- Travel: one track from here goes straight there; several ask you to tap one --
+function doTravel() {
+    const h = parkedHub();
+    if (!h) return;
+    const next = hubNeighbours(h.id);
+    if (!next.length) toast("No track leads from here.", HUD.amber, 2500);
+    else if (next.length === 1) send({ action: "ride", to: next[0] });
+    else {
+        releaseKeys();
+        playersEl.classList.add("hidden");
+        railMode = { kind: "travel", from: h.id, choices: next };
+        sendControls(true);
+    }
+}
+function canTravel() {
+    const h = parkedHub();
+    return !!h && hubNeighbours(h.id).length > 0;
+}
+
+// -- Place a hub: stand still on an empty tile; the map then offers the tracks it could get --
+function cheapestHub() {              // hub + the shortest track to any hub (rock and rules aside)
+    let best = Math.hypot(G.x, G.y);  // distance to the base
+    for (const h of G.hubs.values()) best = Math.min(best, Math.hypot(h.x - G.x, h.y - G.y));
+    return best > G.maxTrack ? null : G.hubCost + Math.max(1, Math.round(best));
+}
+function canAffordHub() {             // the button is only shown to players who could pay
+    const cost = cheapestHub();
+    return cost !== null && G.cargo + Math.max(0, G.score) >= cost;
+}
+function canPlaceHub() {
+    return G.state === "playing" && !G.riding && G.speed <= 1.5 && !overlayOpen() && !parkedHub();
+}
 function requestHubOptions() {
-    if (G.state === "playing" && !overlayOpen() && !placePanelEl.classList.contains("hidden")) {
-        send({ action: "hub_options" });
-    }
-}
-$("placeHub").addEventListener("click", requestHubOptions);
-
-function openHubPicker(m) {
     if (G.state !== "playing" || overlayOpen()) return;
-    const list = $("pickList");
-    list.textContent = "";
-    m.opts.forEach((o, i) => {
-        const b = document.createElement("button");
-        b.className = "btn big small";
-        const where = o.to === 0 ? "The base" : `Hub #${o.to}${o.linked ? "" : " (not linked to base)"}`;
-        b.textContent = `${i + 1}. ${where} · ${o.len} tiles · cost ${o.cost}`;
-        b.addEventListener("click", () => {
-            send({ action: "build_hub", to: o.to, x: m.x, y: m.y });
-            closeHubPicker();
-        });
-        list.appendChild(b);
-    });
-    placePanelEl.classList.add("hidden");
-    showScreen(pickerEl);
+    if (canPlaceHub()) send({ action: "hub_options" });
+    else toast("Stop on an empty tile to place a hub.", HUD.amber, 2500);
 }
-function closeHubPicker() {
-    if (pickerEl.classList.contains("hidden")) return;
-    pickerEl.classList.add("hidden");
-    sendControls(true);
-}
-$("pickCancel").addEventListener("click", closeHubPicker);
-
-$("hubNet").addEventListener("click", () => send({ action: "netmap" }));
-$("hubBuild").addEventListener("click", startBuildMode);
-
-// -- Network map: pick a hub to ride to, or ship your cargo to the base --
-function openNetMap(m) {
-    netData = m;
-    nmSel = null;
-    playersEl.classList.add("hidden");
-    showScreen(netMapEl);
-    drawNetMap();
-    updateNmInfo();
-}
-function closeNetMap() {
-    netMapEl.classList.add("hidden");
-    sendControls(true);
-}
-function nmRow(id) { return netData && netData.hubs.find((r) => r.id === id); }
-
-function drawNetMap() {
-    const cv = $("nmCanvas"), c = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
-    const w = cv.clientWidth, h = cv.clientHeight;
-    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, w, h);
-    nmHits = [];
-    if (!netData) return;
-    const rows = netData.hubs;
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const r of rows) { x0 = Math.min(x0, r.x); x1 = Math.max(x1, r.x); y0 = Math.min(y0, r.y); y1 = Math.max(y1, r.y); }
-    const pad = 36, sc = Math.min((w - 2 * pad) / Math.max(1, x1 - x0), (h - 2 * pad) / Math.max(1, y1 - y0), 12);
-    const ox = w / 2 - ((x0 + x1) / 2) * sc, oy = h / 2 - ((y0 + y1) / 2) * sc;
-    const pos = (r) => [ox + r.x * sc, oy + r.y * sc];
-    const byId = new Map(rows.map((r) => [r.id, r]));
-    c.lineCap = "round";
-    for (const r of rows) {                          // tracks, with an arrow toward the base
-        const to = r.out == null ? null : byId.get(r.out);
-        if (!to) continue;
-        const a = pos(r), b = pos(to);
-        c.strokeStyle = "#59616d"; c.lineWidth = 5; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
-        c.strokeStyle = "#c4ccd8"; c.lineWidth = 1.6; c.stroke();
-        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
-        c.save(); c.translate(mx, my); c.rotate(ang); c.fillStyle = HUD.amber;
-        c.beginPath(); c.moveTo(7, 0); c.lineTo(-5, -5); c.lineTo(-5, 5); c.closePath(); c.fill(); c.restore();
-    }
-    for (const r of rows) {
-        const [px, py] = pos(r), sel = r.id === nmSel, here = r.id === netData.at;
-        nmHits.push({ id: r.id, px, py });
-        c.save(); c.translate(px, py);
-        if (r.id === 0) {
-            c.fillStyle = HUD.amber; c.beginPath(); c.arc(0, 0, 13, 0, TAU); c.fill();
-            c.fillStyle = "#2a2318"; c.beginPath(); c.moveTo(-7, -1); c.lineTo(0, -8); c.lineTo(7, -1); c.lineTo(7, 7); c.lineTo(-7, 7); c.closePath(); c.fill();
-        } else {
-            c.fillStyle = hubAccent(r.bn); c.fillRect(-9, -9, 18, 18);
-            c.fillStyle = "#cfd6e0"; c.fillRect(-6, -6, 12, 12);
-        }
-        if (here || sel) {
-            c.strokeStyle = sel ? HUD.neon : "#ffffff"; c.lineWidth = sel ? 3 : 2;
-            c.strokeRect(-14, -14, 28, 28);
-        }
-        c.restore();
-        c.font = `bold 12px ${HUD.font}`; c.textAlign = "center";
-        if (here) { c.fillStyle = "#ffffff"; c.fillText("YOU", px, py - 19); }
-        else if (r.toll > 0) { c.fillStyle = HUD.amber; c.fillText(`-${r.toll}`, px, py - 19); }
-    }
-}
-
-function updateNmInfo() {
-    const row = nmRow(nmSel), cargo = netData ? netData.cargo : 0, at = netData ? netData.at : -1;
-    const base = nmRow(0);
-    $("nmInfo").textContent = !row ? `Tap a hub. Tolls come out of your cargo (${cargo}); your own hubs are free.`
-        : row.id === at ? "You are here."
-        : `${row.id === 0 ? "The base" : `Hub #${row.id} by ${row.by}`}: toll ${row.toll}, you carry ${cargo}.`;
-    $("nmRide").disabled = !row || row.id === at || cargo < row.toll;
-    $("nmRide").textContent = row && row.id !== at ? `Ride (-${row.toll})` : "Ride";
-    $("nmBase").disabled = !base || at === 0 || cargo < base.toll;
-    $("nmBase").textContent = base && at !== 0 ? `To base (-${base.toll})` : "To base";
-    const ship = netData && netData.ship;
-    $("nmShip").disabled = !ship || cargo <= ship.toll;
-    $("nmShip").textContent = ship ? `Ship cargo (+${Math.max(0, cargo - ship.toll)})` : "Ship cargo";
-}
-
-function nmRide(id) {
-    const row = nmRow(id);
-    if (!row || row.id === netData.at || netData.cargo < row.toll) return;
-    send({ action: "ride", to: id });
-    closeNetMap();
-}
-$("nmCanvas").addEventListener("click", (e) => {
-    const r = e.target.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    let best = null, bd = 22;
-    for (const h of nmHits) { const d = Math.hypot(h.px - x, h.py - y); if (d < bd) { bd = d; best = h; } }
-    nmSel = best ? best.id : null;
-    drawNetMap(); updateNmInfo();
-});
-$("nmRide").addEventListener("click", () => nmRide(nmSel));
-$("nmBase").addEventListener("click", () => nmRide(0));
-$("nmShip").addEventListener("click", () => { send({ action: "send_cargo" }); closeNetMap(); });
-$("nmClose").addEventListener("click", closeNetMap);
-window.addEventListener("resize", () => { if (!netMapEl.classList.contains("hidden")) drawNetMap(); });
-
-function nmKey(e) {
-    if (e.key === "Escape") { e.preventDefault(); closeNetMap(); return; }
-    if (e.key === "h" || e.key === "H") { e.preventDefault(); nmRide(0); return; }
-    if (e.key === "s" || e.key === "S") { e.preventDefault(); if (!$("nmShip").disabled) $("nmShip").click(); return; }
-    if (e.key === "Enter") { e.preventDefault(); nmRide(nmSel); return; }
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-        const ids = netData.hubs.map((r) => r.id).sort((a, b) => a - b);
-        const i = ids.indexOf(nmSel), step = e.key === "ArrowRight" ? 1 : -1;
-        nmSel = ids[(i < 0 ? (step > 0 ? 0 : ids.length - 1) : (i + step + ids.length) % ids.length)];
-        drawNetMap(); updateNmInfo();
-    }
-}
-
-// -- Build mode: tap a spot, see the straight line and its cost, tap again to build --
-function startBuildMode() {
-    if (!parkedHub()) return;
-    playersEl.classList.add("hidden");
+function openHubMode(m) {
+    if (G.state !== "playing" || overlayOpen()) return;
     releaseKeys();
-    buildMode = { target: null, preview: null };
-    $("buildOk").disabled = true;
-    $("buildMsg").textContent = "Tap a spot for a new hub, or tap a hub to link to it.";
-    buildBarEl.classList.remove("hidden");
-    hubPanelEl.classList.add("hidden");
+    playersEl.classList.add("hidden");
+    railMode = { kind: "hub", x: m.x, y: m.y, opts: m.opts };
     sendControls(true);
 }
-function endBuildMode() {
-    if (!buildMode) return;
-    buildMode = null;
-    buildBarEl.classList.add("hidden");
-    sendControls(true);
-}
-function onQuote(q) {
-    if (!buildMode) return;
-    buildMode.preview = q;
-    $("buildOk").disabled = !q.ok;
-    $("buildMsg").textContent = q.ok
-        ? `${q.new ? "New hub + track" : "Link"}: ${q.len} tiles, cost ${q.cost}. Tap the spot again or press Build.`
-        : q.why;
-}
+
+// -- Tapping the map while a rail mode is active: a tap on a track picks it, anything else closes --
 function screenToWorld(sx, sy) {
     const cam = currentCam(), r = canvas.getBoundingClientRect();
     const dx = sx - r.width / 2, dy = sy - r.height * ANCHOR_Y, c = Math.cos(cam.h), s = Math.sin(cam.h);
     return [cam.x + (dx * c - dy * s) / tile, cam.y + (dx * s + dy * c) / tile];
 }
-function buildTap(sx, sy) {
-    const [wx, wy] = screenToWorld(sx, sy), x = Math.round(wx), y = Math.round(wy), t = buildMode.target;
-    if (t && t.x === x && t.y === y && buildMode.preview && buildMode.preview.ok) { confirmBuild(); return; }
-    buildMode.target = { x, y };
-    buildMode.preview = null;
-    $("buildOk").disabled = true;
-    send({ action: "build_track", x, y, confirm: false });
+function distToSegment(px, py, ax, ay, bx, by) {
+    const vx = bx - ax, vy = by - ay, len2 = vx * vx + vy * vy;
+    const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2)) : 0;
+    return Math.hypot(px - (ax + t * vx), py - (ay + t * vy));
 }
-function confirmBuild() {
-    if (!buildMode || !buildMode.target || !buildMode.preview || !buildMode.preview.ok) return;
-    send({ action: "build_track", x: buildMode.target.x, y: buildMode.target.y, confirm: true });
+function railTap(sx, sy) {
+    const mode = railMode;
+    railMode = null;
+    sendControls(true);
+    const cam = currentCam(), r = canvas.getBoundingClientRect();
+    const segs = railModeSegments(mode, cam, r.width / 2, r.height * ANCHOR_Y);
+    let best = null, bd = Math.max(22, tile * 0.8);          // generous: fingers are fat
+    for (const s of segs) {
+        const d = distToSegment(sx, sy, s.ax, s.ay, s.bx, s.by);
+        if (d <= bd) { bd = d; best = s; }
+    }
+    if (!best) return;                                       // tapped outside every track: just close
+    if (mode.kind === "hub") send({ action: "build_hub", to: best.to, x: mode.x, y: mode.y });
+    else send({ action: "ride", to: best.to });
 }
-$("buildOk").addEventListener("click", confirmBuild);
-$("buildCancel").addEventListener("click", endBuildMode);
+
+// -- Paying: cargo goes first; the player is asked before banked score is used --
+function openPayDialog(m) {
+    railMode = null;
+    payRetry = m.retry;
+    $("payTitle").textContent = m.label;
+    $("payText").textContent = m.cargo > 0
+        ? `Costs ${m.cost}. Your cargo covers ${m.cargo}; pay the missing ${m.score} from your banked gems (score)?`
+        : `Costs ${m.cost} and you carry no cargo. Pay it from your banked gems (score)?`;
+    $("payYes").textContent = `Pay ${m.score} from score`;
+    showScreen(payBarEl);
+}
+function closePayDialog() {
+    payRetry = null;
+    payBarEl.classList.add("hidden");
+    sendControls(true);
+}
+$("payYes").addEventListener("click", () => {
+    if (payRetry) send(Object.assign({}, payRetry, { pay_score: true }));
+    closePayDialog();
+});
+$("payNo").addEventListener("click", closePayDialog);
+
+// -- Player menu: tap another robot to see what it says and block it --
+let pmId = null;
+function refreshPlayerMenu() {
+    const blockedNow = pmId !== null && blocked.has(pmId);
+    $("pmBlock").textContent = blockedNow ? "Unblock chat" : "Block chat";
+}
+function openPlayerMenu(meta) {
+    pmId = meta.id;
+    $("pmName").textContent = (meta.crown ? "\u265B " : "") + meta.name;
+    $("pmChat").textContent = meta.chat ? `\u201C${meta.chat}\u201D` : "(no message)";
+    refreshPlayerMenu();
+    playersEl.classList.add("hidden");
+    showScreen(playerMenuEl);
+}
+function closePlayerMenu() {
+    if (playerMenuEl.classList.contains("hidden")) return;
+    playerMenuEl.classList.add("hidden");
+    pmId = null;
+    sendControls(true);
+}
+$("pmBlock").addEventListener("click", () => { if (pmId !== null) { toggleBlock(pmId); refreshPlayerMenu(); } });
+$("pmClose").addEventListener("click", closePlayerMenu);
+
+// Robots drawn this frame as tap targets (filled by main.js): tap yours to edit your
+// message, tap someone else's to open their menu. Returns true if a robot was hit.
+function tapRobot(x, y) {
+    let best = null, bd = Infinity;
+    for (const r of robotHits) {
+        const d = Math.hypot(r.x - x, r.y - y);
+        if (d <= r.r && d < bd) { best = r; bd = d; }
+    }
+    if (!best) return false;
+    if (best.me) openChat(); else openPlayerMenu(best.meta);
+    return true;
+}
 
 // ---- Main menu ----
 try { nickEl.value = localStorage.getItem("gembot-name") || ""; } catch (e) { /* ignore */ }
@@ -438,20 +414,14 @@ function zoom(delta) {
 
 window.addEventListener("keydown", (e) => {
     if (G.state !== "playing") return;
-    if (buildMode) {
-        if (e.key === "Escape") { e.preventDefault(); endBuildMode(); }
-        else if (e.key === "Enter") { e.preventDefault(); confirmBuild(); }
+    if (railMode) {                              // waiting for a tap on a track
+        if (e.key === "Escape") { e.preventDefault(); closeRailMode(); }
         return;
     }
-    if (!pickerEl.classList.contains("hidden")) {
-        const n = Number(e.key);
-        if (e.key === "Escape") { e.preventDefault(); closeHubPicker(); }
-        else if (n >= 1 && n <= $("pickList").children.length) { e.preventDefault(); $("pickList").children[n - 1].click(); }
-        return;
-    }
-    if (!netMapEl.classList.contains("hidden")) { nmKey(e); return; }
     if (overlayOpen()) {
         if (e.key === "Escape" && !pauseEl.classList.contains("hidden")) resume();
+        else if (e.key === "Escape" && !playerMenuEl.classList.contains("hidden")) closePlayerMenu();
+        else if (e.key === "Escape" && !payBarEl.classList.contains("hidden")) closePayDialog();
         return;
     }
     const k = KEYS[e.key];
@@ -471,8 +441,10 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault(); togglePlayersPanel();
     } else if (e.key === "b" || e.key === "B") {
         e.preventDefault(); if (!e.repeat) requestHubOptions();
-    } else if (e.key === "r" || e.key === "R") {
-        e.preventDefault(); if (parkedHub()) send({ action: "netmap" });
+    } else if (e.key === "t" || e.key === "T") {
+        e.preventDefault(); if (!e.repeat) doTravel();
+    } else if (e.key === "g" || e.key === "G") {
+        e.preventDefault(); if (!e.repeat) doShip();
     } else if (e.key === "Escape") {
         e.preventDefault();
         if (playersPanelOpen()) playersEl.classList.add("hidden"); else openPause();
@@ -485,21 +457,32 @@ window.addEventListener("keyup", (e) => {
 window.addEventListener("blur", releaseKeys);
 window.addEventListener("resize", reportViewport);
 
+// ---- View aids: the lens (arrows) and the minimap, remembered in this browser ----
+function toggleView(flag, storeKey) {
+    G[flag] = !G[flag];
+    try { localStorage.setItem(storeKey, G[flag] ? "1" : "0"); } catch (e) { /* ignore */ }
+}
+
 // ---- Taps on the canvas HUD ----
 canvas.addEventListener("click", (e) => {
-    if (G.state === "playing" && buildMode) {
+    if (G.state === "playing" && railMode) {
         const r = canvas.getBoundingClientRect();
-        buildTap(e.clientX - r.left, e.clientY - r.top);
+        railTap(e.clientX - r.left, e.clientY - r.top);
         return;
     }
     if (G.state !== "playing" || overlayOpen()) return;
-    if (touchMode && e.pointerType && e.pointerType !== "mouse" && !downOnHud) return;   // end of a steering hold
+    if (touchMode && e.pointerType && e.pointerType !== "mouse" && !downOnHud) return;   // touch taps: see touch.js
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left, y = e.clientY - rect.top;
     if (inRect(hudHit.hamburger, x, y)) openPause();
     else if (inRect(hudHit.flip, x, y)) send({ action: "flip" });
-    else if (inRect(hudHit.chat, x, y)) openChat();
-    else if (inRect(hudHit.players, x, y) || inRect(hudHit.score, x, y)) togglePlayersPanel();
+    else if (inRect(hudHit.placeHub, x, y)) requestHubOptions();
+    else if (inRect(hudHit.lens, x, y)) toggleView("showArrows", "gembot-arrows");
+    else if (inRect(hudHit.minimap, x, y)) toggleView("showMap", "gembot-map");
+    else if (inRect(hudHit.ship, x, y)) doShip();
+    else if (inRect(hudHit.travel, x, y)) doTravel();
+    else if (inRect(hudHit.score, x, y)) togglePlayersPanel();
+    else tapRobot(x, y);
 });
 
 showScreen(menuEl);

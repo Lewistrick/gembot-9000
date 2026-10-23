@@ -146,6 +146,18 @@ class Network:
         i = next(i for i, h in enumerate(ca) if h in on_b)
         return ca[: i + 1] + list(reversed(cb[: cb.index(ca[i])]))
 
+    def neighbours(self, hid: int) -> list[int]:
+        """Hubs joined to ``hid`` by a single track (the one it leads to, and the
+        ones that lead into it), nearest first."""
+        hub = self.hubs[hid]
+        near = [h.id for h in self.hubs.values() if h.out == hid]
+        if hub.out is not None:
+            near.append(hub.out)
+        return sorted(
+            near,
+            key=lambda h: math.hypot(self.hubs[h].x - hub.x, self.hubs[h].y - hub.y),
+        )
+
     def component(self, hid: int) -> list[int]:
         r = self.root(hid)
         return sorted(h for h in self.hubs if self.root(h) == r)
@@ -173,7 +185,7 @@ class Network:
         return ""
 
     def hub_options(
-        self, world: FloorMap, x: int, y: int, score: int
+        self, world: FloorMap, x: int, y: int, funds: int
     ) -> tuple[list[Quote], str]:
         """Where a new hub on cell ``(x, y)`` could lead, nearest first.
 
@@ -193,7 +205,7 @@ class Network:
         )[:OPTION_SEARCH]
         if not near:
             return [], f"No hub within {MAX_TRACK} tiles to lead to."
-        quotes = [self.quote_track(world, h.id, x, y, score) for h in near]
+        quotes = [self.quote_track(world, h.id, x, y, funds) for h in near]
         ok = [q for q in quotes if q.ok][:OPTION_LIMIT]
         if ok:
             return ok, ""
@@ -203,7 +215,7 @@ class Network:
         return [], "Rock blocks the way to every hub in reach."
 
     def quote_track(
-        self, world: FloorMap, src: int, tx: int, ty: int, score: int
+        self, world: FloorMap, src: int, tx: int, ty: int, funds: int
     ) -> Quote:
         """A straight track from hub ``src`` to the target cell.
 
@@ -259,8 +271,8 @@ class Network:
             q.why = "Rock in the way: a track needs floor all along."
             return q
         q.cost = track_cost(q.length) + (HUB_COST if other is None else 0)
-        if score < q.cost:
-            q.why = f"Needs {q.cost} points (you have {score})."
+        if funds < q.cost:
+            q.why = f"Needs {q.cost} points (you have {funds})."
             return q
         q.ok = True
         return q
