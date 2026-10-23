@@ -133,13 +133,14 @@ function drawScorePanel(x, y, w, h) {
 
 // Round icon buttons beside the about-face button. `on` false draws it dimmed (unavailable).
 function drawIconButton(cx, cy, r, kind, on, active) {
+    const col = active ? HUD.amber : HUD.neon;      // lit buttons turn amber; a solid dark disc keeps them readable on light floor
     ctx.save();
-    ctx.globalAlpha = on ? 1 : 0.45;
+    ctx.globalAlpha = on ? 1 : 0.6;
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU);
-    ctx.fillStyle = active ? "rgba(255,207,77,0.30)" : "rgba(4,12,12,0.62)"; ctx.fill();
-    ctx.lineWidth = Math.max(1.5, r * 0.09); ctx.strokeStyle = HUD.neon;
-    ctx.shadowColor = HUD.neon; ctx.shadowBlur = on ? 7 : 0; ctx.stroke(); ctx.shadowBlur = 0;
-    ctx.strokeStyle = HUD.neon; ctx.fillStyle = HUD.neon;
+    ctx.fillStyle = active ? "rgba(52,34,0,0.94)" : "rgba(4,12,12,0.88)"; ctx.fill();
+    ctx.lineWidth = Math.max(2, r * (active ? 0.14 : 0.09)); ctx.strokeStyle = col;
+    ctx.shadowColor = col; ctx.shadowBlur = on ? 9 : 0; ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = col; ctx.fillStyle = col;
     ctx.lineWidth = Math.max(2, r * 0.1); ctx.lineCap = "round"; ctx.lineJoin = "round";
     const sq = (px, py, s) => { rr(px - s, py - s, s * 2, s * 2, s * 0.25); ctx.stroke(); };
     if (kind === "hub") {                          // a hub with a "+": place one here
@@ -403,8 +404,12 @@ function drawHUD(cam, W, H) {
     const fbR = touch ? Math.max(28, Math.min(46, S * 0.075)) : Math.max(20, Math.min(38, S * 0.05));
     const fbx = W / 2, fby = H - M - fbR, sbR = fbR * 0.78, gap = fbR + sbR + M * 0.6;
     const sby = fby + (fbR - sbR), cap = Math.max(8, S * 0.02);
-    drawFlipButton(fbx, fby, fbR, G.flipping);
-    hudHit.flip = { x: fbx - fbR, y: fby - fbR, w: 2 * fbR, h: 2 * fbR };
+    if (travelMode) {
+        hudHit.flip = null;       // steering is off in travel mode, and tracks behind you run right through this spot
+    } else {
+        drawFlipButton(fbx, fby, fbR, G.flipping);
+        hudHit.flip = { x: fbx - fbR, y: fby - fbR, w: 2 * fbR, h: 2 * fbR };
+    }
     const parked = typeof parkedHub === "function" && parkedHub();
     const box = (cx) => ({ x: cx - sbR, y: sby - sbR, w: 2 * sbR, h: 2 * sbR });
     hudHit.placeHub = hudHit.ship = hudHit.travel = null;
@@ -413,10 +418,10 @@ function drawHUD(cam, W, H) {
         const ship = canShip(), go = canTravel() || travelMode;
         drawIconButton(fbx - gap, sby, sbR, "ship", ship);
         hudHit.ship = box(fbx - gap);
-        text("SHIP", fbx - gap, sby - sbR - 5, cap, ship ? HUD.neon : HUD.dim, "center", 0);
+        pillLabel("SHIP", fbx - gap, sby - sbR - cap * 1.3, ship ? HUD.neon : HUD.dim, cap);
         drawIconButton(fbx + gap, sby, sbR, "travel", go, travelMode);
         hudHit.travel = box(fbx + gap);
-        text(travelMode ? "TRAVEL ON" : "TRAVEL", fbx + gap, sby - sbR - 5, cap, travelMode ? HUD.amber : go ? HUD.neon : HUD.dim, "center", 0);
+        pillLabel(travelMode ? "TRAVEL ON" : "TRAVEL", fbx + gap, sby - sbR - cap * 1.3, travelMode ? HUD.amber : go ? HUD.neon : HUD.dim, cap);
         const title = typeof hubCaption === "function" ? hubCaption() : "";
         if (title) pillLabel(title, fbx, fby - fbR - cap * 1.9, HUD.amber, cap * 1.15);
     } else if (typeof canAffordHub === "function" && canAffordHub()) {
@@ -424,7 +429,7 @@ function drawHUD(cam, W, H) {
         const can = canPlaceHub();
         drawIconButton(fbx - gap, sby, sbR, "hub", can);
         hudHit.placeHub = box(fbx - gap);
-        text("HUB", fbx - gap, sby - sbR - 5, cap, can ? HUD.neon : HUD.dim, "center", 0);
+        pillLabel("HUB", fbx - gap, sby - sbR - cap * 1.3, can ? HUD.neon : HUD.dim, cap);
     }
 
     const clockH = drawDayClock(W, M + topH + M * 0.6);
