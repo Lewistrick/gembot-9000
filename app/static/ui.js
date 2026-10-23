@@ -241,6 +241,10 @@ function requestHubOptions() {
 }
 function openHubMode(m) {
     if (G.state !== "playing" || overlayOpen()) return;
+    if (m.opts.length === 1) {            // only one possible track: nothing to choose, just build it
+        send({ action: "build_hub", to: m.opts[0].to, x: m.x, y: m.y });   // (the server still asks about paying)
+        return;
+    }
     releaseKeys();
     playersEl.classList.add("hidden");
     railMode = { kind: "hub", x: m.x, y: m.y, opts: m.opts };

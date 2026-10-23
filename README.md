@@ -35,7 +35,7 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 - **Gems.** Drive over one to mine it; it goes into your **cargo** (unlimited) and is gone for
   *everyone* for the rest of the day. They sit in rock faces, get **rarer but richer** with
   distance from the base (`value × (1 + distance/150)`), and ten rare **mega gems** (250 each)
-  hide 60–400 tiles out; they glow amber on the minimap and mining one is announced.
+  hide 60–400 tiles out; they glow amber on the minimap (which also draws hubs, rails and the base) and mining one is announced.
 - **Score.** Cargo only scores once **delivered to the base**: drive into the dashed ring
   around the depot, ride in, or ship it. Undelivered cargo is lost at midnight.
 - **Drilling.** Hold forward straight into a wall and your drill bores out the tile in front:
@@ -48,8 +48,8 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
   are refused, so every linked hub has exactly one way home. Everything is shared.
   To place a hub, stand still on an empty tile and press **HUB** (only shown if you could pay):
   the tracks it could get are drawn as **transparent tracks** to the nearest hubs with their
-  prices, tapping one builds the hub with that track, tapping anywhere else cancels. A hub never
-  exists without a track.
+  prices, tapping one builds the hub with that track, tapping anywhere else cancels. With only one
+  possible track nothing needs picking: it is just built. A hub never exists without a track.
 - **Hub menu.** Parked on a hub (or the base) you can only **ship** your gems to the base on their
   own cart or **travel** to the next hub: one track goes straight there, several make you tap
   the track you want (tap elsewhere to cancel).
