@@ -25,9 +25,9 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 | About-face (180°) | Space | the ↻ button |
 | Chat | Enter, or click your own robot | tap your own robot |
 | Block someone | click their robot, then Block | tap their robot, then Block (Tab or your score lists nearby players) |
-| Ship gems / travel (parked on a hub) | G / T | the **SHIP** and **TRAVEL** buttons that appear beside ↻ when you park on a hub |
+| Ship gems / travel (parked on a hub) | G / T | the **SHIP** and **TRAVEL** buttons that appear beside ↻ when you park on a hub; TRAVEL toggles travel mode, then tap a track to ride it |
 | Place a hub where you stand | B | the **HUB** button beside ↻ (only shown if you could pay for one; lit when you stand still on an empty tile) |
-| Lens / minimap | the 🔍 and map buttons beside the menu button | the same buttons |
+| Lens / minimap / network | the 🔍, map and network buttons beside the menu button (the network button shows the whole rail network, north up, with you and the base marked) | the same buttons |
 | Zoom | PageUp / PageDown, + / − | |
 
 ## The rules
@@ -51,8 +51,8 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
   prices, tapping one builds the hub with that track, tapping anywhere else cancels. With only one
   possible track nothing needs picking: it is just built. A hub never exists without a track.
 - **Hub menu.** Parked on a hub (or the base) you can only **ship** your gems to the base on their
-  own cart or **travel** to the next hub: one track goes straight there, several make you tap
-  the track you want (tap elsewhere to cancel).
+  own cart or switch on **travel mode**: it stays on until you press TRAVEL again (or drive away
+  from the hubs), and tapping a track leaving your hub rides along it, hop after hop.
 - **Paying is cargo-first.** Hubs, tracks and tolls come out of your cargo; if it falls short you
   are asked whether to pay the missing part from your banked score, and nothing is taken from
   your score without a yes. Without enough cargo plus score the action is refused.

@@ -27,6 +27,7 @@ const G = {
     riding: false,
     showArrows: false,         // lens: arrows to the base, nearest gem and nearest hub
     showMap: false,            // minimap around the player
+    showNetwork: false,        // the whole rail network, north up
     toasts: [],                // { text, color, t0, dur }
     idleUntil: 0,              // performance.now() deadline of the idle warning, or 0
 };
@@ -50,6 +51,7 @@ if (!token) {
 try {
     G.showArrows = localStorage.getItem("gembot-arrows") === "1";
     G.showMap = localStorage.getItem("gembot-map") === "1";
+    G.showNetwork = localStorage.getItem("gembot-net") === "1";
 } catch (e) { /* storage blocked */ }
 
 function curColors() { return G.pal || G.colors || DEFAULT_COLORS; }
