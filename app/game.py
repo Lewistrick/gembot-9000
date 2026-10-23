@@ -18,7 +18,7 @@ from typing import Self
 from zoneinfo import ZoneInfo
 
 from .grid import BASE_RADIUS, DEFAULT_STYLE, World
-from .player import TICK, Player, Ride
+from .player import DRILL_COST, TICK, Player, Ride
 from .rail import CART_SPEED, RIDE_SPEED, Hub, Network, Quote, advance
 
 MAX_PLAYERS = 100
@@ -121,6 +121,8 @@ class Game:
         self.names: dict[str, str] = {}  # lowercase name -> pid (reserved all day)
         self.mined: set[tuple[int, int]] = set()
         self.mined_log: list[tuple[int, int]] = []  # append-only, for client deltas
+        self.drilled: set[tuple[int, int]] = set()  # wall tiles turned into floor today
+        self.drilled_log: list[tuple[int, int]] = []  # append-only, for client deltas
         self.announcements: list[tuple[int, str]] = []
         self.multiplier = 1  # gem value multiplier (rush hour)
         self.tick_count = 0
@@ -154,9 +156,8 @@ class Game:
             self._rows, self._rows_tick = {}, self.tick_count
         row = self._rows.get(q.pid)
         if row is None:
-            row = self._rows[q.pid] = Row(
-                q.num, q.x, q.y, q.heading, 1 if q.ride else 0
-            )
+            flags = (1 if q.ride else 0) | (2 if q.drilling else 0)
+            row = self._rows[q.pid] = Row(q.num, q.x, q.y, q.heading, flags)
         return row
 
     def join(self, pid: str, name: str) -> Player | None:
@@ -303,13 +304,33 @@ class Game:
             if player.ride is not None:
                 self._ride_step(player)
             else:
-                player.step(self.world)
+                player.step(self)
+                if player.drilled_tile is not None:
+                    self._drill(player)
                 self._pickup(player)
             self._deliver(player)
         self._move_carts()
         if self.tick_count % BOARD_EVERY == 1:
             self.refresh_board()
             self._clock_events()
+
+    def is_floor(self, x: int, y: int) -> bool:
+        """Walkable: natural floor, or a wall tile somebody has drilled out."""
+        return (x, y) in self.drilled or self.world.is_floor(x, y)
+
+    def _drill(self, player: Player) -> None:
+        """A robot bored through its wall tile: it becomes floor for everyone.
+
+        Costs ``DRILL_COST`` cargo; a robot with nothing to pay with drills for
+        free (it just takes longer), so nobody can be stuck for good.
+        """
+        cell, player.drilled_tile = player.drilled_tile, None
+        if cell is None or self.is_floor(*cell) or math.hypot(*cell) <= BASE_RADIUS:
+            return
+        if player.cargo >= DRILL_COST:
+            player.cargo -= DRILL_COST
+        self.drilled.add(cell)
+        self.drilled_log.append(cell)
 
     def _pickup(self, player: Player) -> None:
         cell = (round(player.x), round(player.y))
@@ -379,7 +400,7 @@ class Game:
         if not self._standing_still(player):
             return self._say(player, False, "Stand still to place a hub.")
         x, y = round(player.x), round(player.y)
-        quotes, why = self.rail.hub_options(self.world, x, y, player.score)
+        quotes, why = self.rail.hub_options(self, x, y, player.score)
         if not quotes:
             return self._say(player, False, why)
         opts = []
@@ -410,7 +431,7 @@ class Game:
             return self._say(player, False, "You moved. Place the hub again.")
         if to not in self.rail.hubs:
             return self._say(player, False, "That hub is gone.")
-        q = self.rail.quote_track(self.world, to, x, y, player.score)
+        q = self.rail.quote_track(self, to, x, y, player.score)
         if q.kind != "track":  # standing on a hub: that would only link two hubs
             return self._say(player, False, "Too close to another hub.")
         if not q.ok:
@@ -428,7 +449,7 @@ class Game:
         origin = self.hub_under(player)
         if origin is None:
             return self._say(player, False, "Stop on a hub to build a track from it.")
-        q = self.rail.quote_track(self.world, origin.id, x, y, player.score)
+        q = self.rail.quote_track(self, origin.id, x, y, player.score)
         if not confirm:
             player.notices.append(self._quote_msg(q, origin))
         elif not q.ok:
@@ -623,6 +644,12 @@ class Game:
         self.players[player.pid] = player
         self.names[player.name.lower()] = player.pid
         self._next_num = max(self._next_num, player.num + 1)
+
+    def restore_drilled(self, cells: list[tuple[int, int]]) -> None:
+        for cell in cells:
+            if cell not in self.drilled:
+                self.drilled.add(cell)
+                self.drilled_log.append(cell)
 
     def restore_mined(self, cells: list[tuple[int, int]]) -> None:
         for cell in cells:

@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS mined (
     day TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL,
     PRIMARY KEY (day, x, y)
 );
+CREATE TABLE IF NOT EXISTS drilled (
+    day TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL,
+    PRIMARY KEY (day, x, y)
+);
 CREATE TABLE IF NOT EXISTS hubs (
     day TEXT NOT NULL, id INTEGER NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL,
     builder TEXT NOT NULL, out INTEGER,
@@ -49,6 +53,7 @@ class Store:
         self._lock = threading.Lock()  # one writer at a time (snapshot bookkeeping too)
         self._saved_players: dict[str, tuple] = {}
         self._mined_saved = 0
+        self._drilled_saved = 0
         self._hubs_saved: dict[int, tuple] = {}
 
     def close(self) -> None:
@@ -89,6 +94,8 @@ class Store:
                 "players": players,
                 "mined": list(game.mined_log[self._mined_saved :]),
                 "mined_upto": len(game.mined_log),
+                "drilled": list(game.drilled_log[self._drilled_saved :]),
+                "drilled_upto": len(game.drilled_log),
                 "hubs": hubs,
             }
 
@@ -105,11 +112,16 @@ class Store:
                 [(day, x, y) for x, y in snap["mined"]],
             )
             self.db.executemany(
+                "INSERT OR IGNORE INTO drilled VALUES (?,?,?)",
+                [(day, x, y) for x, y in snap["drilled"]],
+            )
+            self.db.executemany(
                 "INSERT OR REPLACE INTO hubs VALUES (?,?,?,?,?,?)",
                 [(day, hid, *row) for hid, row in snap["hubs"].items()],
             )
             self._saved_players.update(snap["players"])
             self._mined_saved = max(self._mined_saved, snap["mined_upto"])
+            self._drilled_saved = max(self._drilled_saved, snap["drilled_upto"])
             self._hubs_saved.update(snap["hubs"])
 
     def flush(self, game: Game) -> None:
@@ -162,6 +174,10 @@ class Store:
             ]
             game.restore_mined(cells)
             self._mined_saved = len(game.mined_log)
+            game.restore_drilled(
+                list(self.db.execute("SELECT x, y FROM drilled WHERE day = ?", (day,)))
+            )
+            self._drilled_saved = len(game.drilled_log)
             rail = getattr(game, "rail", None)
             if rail is not None:
                 rows = self.db.execute(
@@ -177,6 +193,7 @@ class Store:
         with self._lock:
             self._saved_players.clear()
             self._mined_saved = 0
+            self._drilled_saved = 0
             self._hubs_saved.clear()
 
     # ------------------------------------------------------------------ #
@@ -244,5 +261,5 @@ class Store:
                 )
             ][keep_days:]
             for day in old:
-                for table in ("players", "mined", "hubs"):
+                for table in ("players", "mined", "drilled", "hubs"):
                     self.db.execute(f"DELETE FROM {table} WHERE day = ?", (day,))

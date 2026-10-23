@@ -4,6 +4,7 @@
 let CS = 33;                    // chunk edge in tiles (the server sends the real value)
 const chunks = new Map();       // "cx,cy" -> { floor: Uint8Array(CS*CS), gems: [[x,y,v]], mega: Set }
 const mined = new Set();        // "x,y" of every gem mined today (by anyone)
+const drilled = new Map();      // "x,y" -> [x, y] of wall tiles drilled out today: floor for everyone
 let chunkVersion = 0;           // bumped whenever terrain changes, to invalidate caches
 
 function addChunk(m) {
@@ -11,6 +12,7 @@ function addChunk(m) {
     for (let i = 0; i < n; i++) floor[i] = (bin.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1;
     const mega = new Set(m.mega.map((p) => p[0] + "," + p[1]));
     for (const p of m.mined) mined.add(p[0] + "," + p[1]);
+    for (const p of m.drilled) drilled.set(p[0] + "," + p[1], p);
     chunks.set(m.cx + "," + m.cy, { cx: m.cx, cy: m.cy, floor, gems: m.gems, mega });
     chunkVersion++;
 }
@@ -18,10 +20,15 @@ function dropChunks(list) {
     for (const p of list) chunks.delete(p[0] + "," + p[1]);
     chunkVersion++;
 }
-function clearWorld() { chunks.clear(); mined.clear(); chunkVersion++; }
+function addDrilled(list) {
+    for (const p of list) drilled.set(p[0] + "," + p[1], p);
+    chunkVersion++;                 // terrain changed: rebuild the cached view
+}
+function clearWorld() { chunks.clear(); mined.clear(); drilled.clear(); chunkVersion++; }
 
 function isFloor(x, y) {
     const cx = Math.floor(x / CS), cy = Math.floor(y / CS);
+    if (drilled.size && drilled.has(x + "," + y)) return true;
     const c = chunks.get(cx + "," + cy);
     return !!c && c.floor[(y - cy * CS) * CS + (x - cx * CS)] === 1;
 }
@@ -172,6 +179,17 @@ function drawWorld(cam, ax, ay, colors) {
         }
     }
     ctx.restore();
+}
+
+// Drilled-out tiles are floor now; leave a little rock rubble where the wall was.
+function drawDrilledRubble(cam, ax, ay, W, H, colors) {
+    if (!drilled.size) return;
+    const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h), rock = hexRgb(colors.rock);
+    for (const p of drilled.values()) {
+        const [sx, sy] = screenPos(p[0], p[1], cam, cosr, sinr, ax, ay);
+        if (sx < -tile || sx > W + tile || sy < -tile || sy > H + tile) continue;
+        drawRubblePile(sx, sy, rngAt(p[0], p[1]), rock, rock);
+    }
 }
 
 // Gem sites in loaded chunks: glowing crystals for unmined, rubble for mined.
