@@ -1,9 +1,6 @@
 // The dashboard drawn on the canvas: compass + radar, score, speedometer, cargo,
 // buttons, toasts and warning banners. Click targets go in hudHit each frame.
 
-const RADAR_RADIUS = 45;       // tiles: how far the compass radar spots gems
-const RADAR_MEGA = 220;        // mega gems are visible from much farther away
-const RADAR_MAX = 12;          // most gem blips shown on the compass at once
 const hudHit = {};             // clickable HUD rects (CSS px), set each frame
 
 function drawHamburger(x, y, s) {
@@ -17,99 +14,6 @@ function drawHamburger(x, y, s) {
         ctx.moveTo(x + s * 0.26, ly); ctx.lineTo(x + s * 0.74, ly); ctx.stroke();
     }
     ctx.shadowBlur = 0;
-}
-
-function drawCompass(cam, x, y, w, h) {
-    panel(x, y, w, h);
-    const cx = x + w / 2;
-    const VIS = 100;                       // degrees shown across the strip
-    const ppd = w / VIS;
-    const bearing = ((cam.rh * 180 / Math.PI) % 360 + 360) % 360;
-    ctx.save();
-    rr(x + 2, y + 2, w - 4, h - 4, Math.min(9, h * 0.2)); ctx.clip();
-    const first = Math.ceil((bearing - VIS / 2) / 15) * 15;
-    for (let d = first; d <= bearing + VIS / 2; d += 15) {
-        const px = cx + (d - bearing) * ppd;
-        const major = ((((d % 45) + 45) % 45) === 0);
-        ctx.strokeStyle = major ? HUD.neon : HUD.dim;
-        ctx.lineWidth = major ? Math.max(1.5, h * 0.04) : Math.max(1, h * 0.02);
-        const th = major ? h * 0.3 : h * 0.16;
-        ctx.beginPath();
-        ctx.moveTo(px, y + h * 0.58); ctx.lineTo(px, y + h * 0.58 + th); ctx.stroke();
-        if (major) {
-            const lbl = DIR[((Math.round(d / 45) % 8) + 8) % 8];
-            text(lbl, px, y + h * 0.44, Math.max(10, h * 0.32), HUD.neon, "center", 6);
-        }
-    }
-    ctx.restore();
-
-    // ---- Radar overlay: nearby gems + the way home ----
-    const laneY = y + h * 0.30;
-    ctx.save();
-    rr(x + 2, y + 2, w - 4, h - 4, Math.min(9, h * 0.2)); ctx.clip();
-    const gemCol = curColors().gem;
-    const near = [];
-    for (const c of chunks.values()) {
-        for (const g of c.gems) {
-            const key = g[0] + "," + g[1];
-            if (mined.has(key)) continue;
-            const mega = c.mega.has(key), reach = mega ? RADAR_MEGA : RADAR_RADIUS;
-            const dx = g[0] - cam.x, dy = g[1] - cam.y, dist = Math.hypot(dx, dy);
-            if (dist > reach) continue;
-            const delta = angleDelta(bearingTo(dx, dy), bearing);
-            if (Math.abs(delta) <= VIS / 2) near.push({ delta, dist, mega, reach });
-        }
-    }
-    near.sort((a, b) => a.dist / a.reach - b.dist / b.reach);
-    for (let i = Math.min(near.length, RADAR_MAX) - 1; i >= 0; i--) {
-        const b = near[i], t = 1 - b.dist / b.reach;       // 0 far .. 1 close
-        const col = b.mega ? "#ffd64d" : gemCol;
-        const bx = cx + b.delta * ppd, sz = h * ((b.mega ? 0.1 : 0.06) + 0.1 * t);
-        ctx.fillStyle = col; ctx.shadowColor = col;
-        ctx.globalAlpha = 0.35 + 0.55 * t; ctx.shadowBlur = 6 * t;
-        ctx.beginPath();
-        ctx.moveTo(bx, laneY - sz); ctx.lineTo(bx + sz, laneY);
-        ctx.lineTo(bx, laneY + sz); ctx.lineTo(bx - sz, laneY);
-        ctx.closePath(); ctx.fill();
-    }
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-    ctx.restore();
-
-    // Home marker: points at the origin, clamped to the strip edge when off-window.
-    const hDelta = angleDelta(bearingTo(-cam.x, -cam.y), bearing);
-    const inWin = Math.abs(hDelta) <= VIS / 2;
-    const hx = inWin ? cx + hDelta * ppd : (hDelta > 0 ? x + w - h * 0.22 : x + h * 0.22);
-    drawHomeMarker(hx, laneY, h, inWin, hDelta > 0);
-
-    // Fixed centre marker (your heading).
-    ctx.fillStyle = HUD.amber; ctx.shadowColor = HUD.amber; ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.moveTo(cx, y + h * 0.34);
-    ctx.lineTo(cx - h * 0.13, y + h * 0.06);
-    ctx.lineTo(cx + h * 0.13, y + h * 0.06);
-    ctx.closePath(); ctx.fill();
-    ctx.shadowBlur = 0;
-}
-
-function drawHomeMarker(hx, ly, h, inWin, toRight) {
-    const s = h * 0.13;
-    ctx.save();
-    ctx.fillStyle = HUD.amber; ctx.shadowColor = HUD.amber; ctx.shadowBlur = 6;
-    ctx.beginPath();                              // house body
-    ctx.moveTo(hx - s, ly - s * 0.1); ctx.lineTo(hx - s, ly + s);
-    ctx.lineTo(hx + s, ly + s); ctx.lineTo(hx + s, ly - s * 0.1);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath();                              // roof
-    ctx.moveTo(hx - s * 1.3, ly - s * 0.1); ctx.lineTo(hx, ly - s * 1.15);
-    ctx.lineTo(hx + s * 1.3, ly - s * 0.1); ctx.closePath(); ctx.fill();
-    ctx.shadowBlur = 0;
-    if (!inWin) {                                 // nudge arrow toward the edge
-        const ax = hx + (toRight ? s * 1.8 : -s * 1.8), dir = toRight ? 1 : -1;
-        ctx.beginPath();
-        ctx.moveTo(ax, ly); ctx.lineTo(ax - dir * s, ly - s * 0.7);
-        ctx.lineTo(ax - dir * s, ly + s * 0.7); ctx.closePath(); ctx.fill();
-    }
-    ctx.restore();
 }
 
 function drawFlipButton(cx, cy, r, active) {
@@ -265,6 +169,81 @@ function drawIconButton(cx, cy, r, kind, on) {
     ctx.restore();
 }
 
+// Square top-bar button with a small icon; lit while its view is switched on.
+function drawSquareButton(x, y, s, kind, on) {
+    panel(x, y, s, s);
+    if (on) { rr(x, y, s, s, Math.min(10, s * 0.22)); ctx.fillStyle = "rgba(79,242,200,0.22)"; ctx.fill(); }
+    const cx = x + s / 2, cy = y + s / 2;
+    ctx.save();
+    ctx.strokeStyle = HUD.neon; ctx.fillStyle = HUD.neon; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(2, s * 0.08);
+    ctx.shadowColor = HUD.neon; ctx.shadowBlur = on ? 8 : 4;
+    if (kind === "lens") {                         // a magnifying glass
+        ctx.beginPath(); ctx.arc(cx - s * 0.05, cy - s * 0.05, s * 0.2, 0, TAU); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx + s * 0.1, cy + s * 0.1); ctx.lineTo(cx + s * 0.3, cy + s * 0.3); ctx.stroke();
+    } else {                                       // a minimap: a round radar with a blip
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.28, 0, TAU); ctx.stroke();
+        ctx.lineWidth = Math.max(1, s * 0.04);
+        ctx.beginPath(); ctx.moveTo(cx - s * 0.28, cy); ctx.lineTo(cx + s * 0.28, cy);
+        ctx.moveTo(cx, cy - s * 0.28); ctx.lineTo(cx, cy + s * 0.28); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx + s * 0.1, cy - s * 0.1, s * 0.05, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+}
+
+// Circular minimap around the player, turning with the heading like the main view:
+// floor and rock, gems you haven't mined, hubs (gray) and the base (yellow).
+const MAP_RADIUS = 26;          // tiles shown in every direction
+function drawMinimap(cam, x, y, size) {
+    const r = size / 2, cx = x + r, cy = y + r, px = r / MAP_RADIUS, colors = curColors();
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.clip();
+    ctx.fillStyle = colors.rock; ctx.fillRect(x, y, size, size);          // rock and anything not loaded yet
+    ctx.translate(cx, cy); ctx.rotate(-cam.h);
+    const ox = Math.round(cam.x), oy = Math.round(cam.y), n = MAP_RADIUS + 1;
+    ctx.fillStyle = colors.floor;
+    for (let j = -n; j <= n; j++) {
+        for (let i = -n; i <= n; i++) {
+            if (i * i + j * j > n * n || !isFloor(ox + i, oy + j)) continue;
+            ctx.fillRect((ox + i - cam.x - 0.5) * px, (oy + j - cam.y - 0.5) * px, px + 0.6, px + 0.6);
+        }
+    }
+    const at = (wx, wy) => [(wx - cam.x) * px, (wy - cam.y) * px];
+    const dot = Math.max(2, px * 0.9);
+    for (const c of chunks.values()) {                                      // gems left to mine
+        for (const g of c.gems) {
+            const key = g[0] + "," + g[1];
+            if (mined.has(key) || Math.hypot(g[0] - cam.x, g[1] - cam.y) > MAP_RADIUS + 2) continue;
+            const [mx, my] = at(g[0], g[1]), mega = c.mega.has(key);
+            ctx.fillStyle = mega ? "#ffd64d" : colors.gem;
+            ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(mx, my, mega ? dot * 1.6 : dot, 0, TAU); ctx.fill(); ctx.stroke();
+        }
+    }
+    for (const h of G.hubs.values()) {                                      // hubs
+        if (Math.hypot(h.x - cam.x, h.y - cam.y) > MAP_RADIUS + 2) continue;
+        const [mx, my] = at(h.x, h.y), s = Math.max(3, px * 1.5);
+        ctx.fillStyle = "#aab2c0"; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 1;
+        ctx.fillRect(mx - s / 2, my - s / 2, s, s); ctx.strokeRect(mx - s / 2, my - s / 2, s, s);
+    }
+    {                                                                       // the base
+        const [mx, my] = at(0, 0), s = Math.max(4, px * 2.2);
+        ctx.fillStyle = HUD.amber; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(mx, my, s, 0, TAU); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.save();                                                             // you, always pointing up
+    ctx.translate(cx, cy);
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.lineWidth = 1.5;
+    const a = Math.max(4, size * 0.04);
+    ctx.beginPath(); ctx.moveTo(0, -a * 1.4); ctx.lineTo(a, a); ctx.lineTo(0, a * 0.4); ctx.lineTo(-a, a); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU);
+    ctx.lineWidth = Math.max(2, size * 0.02); ctx.strokeStyle = HUD.neon; ctx.shadowColor = HUD.neon; ctx.shadowBlur = 8;
+    ctx.stroke(); ctx.shadowBlur = 0;
+}
+
 // Small caption pill centred at (x, y).
 function pillLabel(str, x, y, color, size) {
     ctx.font = `bold ${size}px ${HUD.font}`;
@@ -285,8 +264,13 @@ function drawHUD(cam, W, H) {
     const scoreW = Math.max(160, Math.min(W * 0.42, 280));
     drawScorePanel(W - M - scoreW, M, scoreW, topH);
     hudHit.score = { x: W - M - scoreW, y: M, w: scoreW, h: topH };
-    const cLeft = M + topH + M, cRight = W - M - scoreW - M;
-    if (cRight - cLeft > S * 0.14) drawCompass(cam, cLeft, M, cRight - cLeft, topH);
+    // Next to the menu button: the lens (arrows to base, gem, hub) and the minimap.
+    const gap0 = M * 0.6;
+    drawSquareButton(M + topH + gap0, M, topH, "lens", G.showArrows);
+    hudHit.lens = { x: M + topH + gap0, y: M, w: topH, h: topH };
+    drawSquareButton(M + 2 * (topH + gap0), M, topH, "map", G.showMap);
+    hudHit.minimap = { x: M + 2 * (topH + gap0), y: M, w: topH, h: topH };
+    if (G.showMap) drawMinimap(cam, M, M + topH + gap0, Math.max(96, Math.min(190, S * 0.3)));
 
     // Bottom centre: [hub | ship]  [about-face]  [travel], thumb-sized on touch.
     const fbR = touch ? Math.max(28, Math.min(46, S * 0.075)) : Math.max(20, Math.min(38, S * 0.05));

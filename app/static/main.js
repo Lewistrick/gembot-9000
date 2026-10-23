@@ -129,6 +129,45 @@ function pillText(str, x, y, color) {
     text(str, x, y + fs * 0.35, fs, color, "center", 0);
 }
 
+// ---- Lens: arrows around the robot to the base, the nearest gem and the nearest hub ----
+function drawArrows(cam, ax, ay, now) {
+    if (!G.showArrows) return;
+    const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h), targets = [];
+    targets.push({ x: 0, y: 0, color: HUD.amber, ring: 2.5 });                         // the base: yellow
+    const gem = nearestGem(cam.x, cam.y);
+    if (gem) targets.push({ x: gem[0], y: gem[1], color: gem[2] ? "#ffd64d" : curColors().gem, ring: 2.0 });
+    let hub = null, hd = Infinity;
+    for (const h of G.hubs.values()) {
+        const d = Math.hypot(h.x - cam.x, h.y - cam.y);
+        if (d < hd) { hd = d; hub = h; }
+    }
+    if (hub) targets.push({ x: hub.x, y: hub.y, color: "#aab2c0", ring: 1.5 });         // the nearest hub: gray
+    ctx.save();
+    ctx.lineJoin = "round";
+    for (const t of targets) {
+        const [sx, sy] = screenPos(t.x, t.y, cam, cosr, sinr, ax, ay);
+        const vx = sx - ax, vy = sy - ay, d = Math.hypot(vx, vy), tiles = d / tile;
+        if (tiles < 1.6) continue;                                  // you're practically there
+        const ux = vx / d, uy = vy / d, r = tile * t.ring, len = tile * 0.5, half = tile * 0.24;
+        const bx = ax + ux * r, by = ay + uy * r;                   // arrow base; the tip points at the target
+        ctx.beginPath();
+        ctx.moveTo(bx + ux * len, by + uy * len);
+        ctx.lineTo(bx - uy * half, by + ux * half);
+        ctx.lineTo(bx + uy * half, by - ux * half);
+        ctx.closePath();
+        ctx.fillStyle = t.color; ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = Math.max(2, tile * 0.07);
+        ctx.shadowColor = t.color; ctx.shadowBlur = 6;
+        ctx.stroke(); ctx.fill();
+        ctx.shadowBlur = 0;
+        const fs = Math.max(10, tile * 0.34), lx = bx + ux * (len + fs * 0.9), ly = by + uy * (len + fs * 0.9);
+        ctx.font = `bold ${fs}px ${HUD.font}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.lineWidth = Math.max(2, fs * 0.25); ctx.strokeStyle = "rgba(0,0,0,0.75)";
+        ctx.strokeText(String(Math.round(tiles)), lx, ly);
+        ctx.fillStyle = t.color; ctx.fillText(String(Math.round(tiles)), lx, ly);
+    }
+    ctx.restore();
+}
+
 // ---- Rail modes: ghost tracks for a new hub, or tracks you can ride along ----
 // The candidate tracks as screen-space segments (shared with the tap handling in ui.js).
 function railModeSegments(mode, cam, ax, ay) {
@@ -229,6 +268,7 @@ function draw() {
     drawMyDrill(ax, ay, now, cam.rh - cam.h);
     robotHits.push({ x: ax, y: ay, r: tile * 0.75, me: true });
     drawRobotLabels(ax, ay, G.meta.get(G.me.num) || { name: G.me.name, chat: "", id: G.me.id }, now);
+    drawArrows(cam, ax, ay, now);
     drawRailMode(cam, ax, ay, W, H, now);
 
     // Brief red vignette that fades after a wall bump.

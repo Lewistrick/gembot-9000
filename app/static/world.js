@@ -181,6 +181,20 @@ function drawWorld(cam, ax, ay, colors) {
     ctx.restore();
 }
 
+// The nearest gem still in the rock among the chunks the server has sent, as [x, y, mega].
+function nearestGem(x, y) {
+    let best = null, bd = Infinity;
+    for (const c of chunks.values()) {
+        for (const g of c.gems) {
+            const key = g[0] + "," + g[1];
+            if (mined.has(key)) continue;
+            const d = Math.hypot(g[0] - x, g[1] - y);
+            if (d < bd) { bd = d; best = [g[0], g[1], c.mega.has(key)]; }
+        }
+    }
+    return best;
+}
+
 // Drilled-out tiles are floor now; leave a little rock rubble where the wall was.
 function drawDrilledRubble(cam, ax, ay, W, H, colors) {
     if (!drilled.size) return;

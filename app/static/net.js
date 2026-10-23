@@ -25,6 +25,8 @@ const G = {
     hubs: new Map(),           // id -> { id, x, y, bn (builder num), out (hub id or -1) }
     carts: new Map(),          // id -> { from, to, t0, a } (interpolated like robots)
     riding: false,
+    showArrows: false,         // lens: arrows to the base, nearest gem and nearest hub
+    showMap: false,            // minimap around the player
     toasts: [],                // { text, color, t0, dur }
     idleUntil: 0,              // performance.now() deadline of the idle warning, or 0
 };
@@ -44,6 +46,11 @@ if (!token) {
     token = Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2);
     try { localStorage.setItem("gembot-token", token); } catch (e) { /* ignore */ }
 }
+
+try {
+    G.showArrows = localStorage.getItem("gembot-arrows") === "1";
+    G.showMap = localStorage.getItem("gembot-map") === "1";
+} catch (e) { /* storage blocked */ }
 
 function curColors() { return G.pal || G.colors || DEFAULT_COLORS; }
 

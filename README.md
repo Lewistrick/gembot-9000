@@ -27,6 +27,7 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 | Block someone | click their robot, then Block | tap their robot, then Block (Tab or your score lists nearby players) |
 | Ship gems / travel (parked on a hub) | G / T | the **SHIP** and **TRAVEL** buttons that appear beside ↻ when you park on a hub |
 | Place a hub where you stand | B | the **HUB** button beside ↻ (only shown if you could pay for one; lit when you stand still on an empty tile) |
+| Lens / minimap | the 🔍 and map buttons beside the menu button | the same buttons |
 | Zoom | PageUp / PageDown, + / − | |
 
 ## The rules
@@ -34,7 +35,7 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 - **Gems.** Drive over one to mine it; it goes into your **cargo** (unlimited) and is gone for
   *everyone* for the rest of the day. They sit in rock faces, get **rarer but richer** with
   distance from the base (`value × (1 + distance/150)`), and ten rare **mega gems** (250 each)
-  hide 60–400 tiles out; the radar shows them from far away and mining one is announced.
+  hide 60–400 tiles out; they glow amber on the minimap and mining one is announced.
 - **Score.** Cargo only scores once **delivered to the base**: drive into the dashed ring
   around the depot, ride in, or ship it. Undelivered cargo is lost at midnight.
 - **Drilling.** Hold forward straight into a wall and your drill bores out the tile in front:

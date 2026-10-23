@@ -211,6 +211,39 @@ function freePort() {
     await a.evaluate(() => { G.others.delete(99); G.meta.delete(99); G.drill = 0; clearWorld(); });
     check(await a.evaluate(() => drilled.size === 0), "leaving the world forgets drilled tiles");
 
+    // --- Lens and minimap buttons (the compass is gone) ---
+    const aids = await a.evaluate(async () => {
+        const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const out = { noCompass: typeof drawCompass === "undefined" };
+        await frames();
+        const rect = canvas.getBoundingClientRect();
+        const click = (b) => canvas.dispatchEvent(new MouseEvent("click", { clientX: rect.left + b.x + b.w / 2, clientY: rect.top + b.y + b.h / 2, bubbles: true }));
+        out.buttons = !!hudHit.lens && !!hudHit.minimap;
+        click(hudHit.lens);
+        out.arrowsOn = G.showArrows === true;
+        G.hubs.set(1, { id: 1, x: Math.round(G.x) + 6, y: Math.round(G.y), bn: 2, out: 0 });
+        await frames(); await frames();                  // arrows to the base, a gem (if any) and the hub draw
+        out.nearestGem = nearestGem(G.x, G.y) === null || nearestGem(G.x, G.y).length === 3;
+        click(hudHit.lens);
+        out.arrowsOff = G.showArrows === false;
+        click(hudHit.minimap);
+        out.mapOn = G.showMap === true;
+        await frames(); await frames();                  // the minimap draws floor, rock, gems and hubs
+        click(hudHit.minimap);
+        out.mapOff = G.showMap === false;
+        G.hubs.clear();
+        return out;
+    });
+    for (const [k, what] of [
+        ["noCompass", "the compass is gone"],
+        ["buttons", "the lens and minimap buttons are in the top bar"],
+        ["arrowsOn", "the lens button shows the arrows"],
+        ["nearestGem", "the nearest gem can be found"],
+        ["arrowsOff", "clicking the lens again hides them"],
+        ["mapOn", "the minimap button shows the minimap"],
+        ["mapOff", "clicking it again hides the minimap"],
+    ]) check(aids[k] === true, what);
+
     // --- Tap robots: yours edits your message, someone else's opens their menu ---
     // (done inside one page call: the server's next update would drop an injected robot)
     const taps = await a.evaluate(async () => {

@@ -457,6 +457,12 @@ window.addEventListener("keyup", (e) => {
 window.addEventListener("blur", releaseKeys);
 window.addEventListener("resize", reportViewport);
 
+// ---- View aids: the lens (arrows) and the minimap, remembered in this browser ----
+function toggleView(flag, storeKey) {
+    G[flag] = !G[flag];
+    try { localStorage.setItem(storeKey, G[flag] ? "1" : "0"); } catch (e) { /* ignore */ }
+}
+
 // ---- Taps on the canvas HUD ----
 canvas.addEventListener("click", (e) => {
     if (G.state === "playing" && railMode) {
@@ -471,6 +477,8 @@ canvas.addEventListener("click", (e) => {
     if (inRect(hudHit.hamburger, x, y)) openPause();
     else if (inRect(hudHit.flip, x, y)) send({ action: "flip" });
     else if (inRect(hudHit.placeHub, x, y)) requestHubOptions();
+    else if (inRect(hudHit.lens, x, y)) toggleView("showArrows", "gembot-arrows");
+    else if (inRect(hudHit.minimap, x, y)) toggleView("showMap", "gembot-map");
     else if (inRect(hudHit.ship, x, y)) doShip();
     else if (inRect(hudHit.travel, x, y)) doTravel();
     else if (inRect(hudHit.score, x, y)) togglePlayersPanel();
