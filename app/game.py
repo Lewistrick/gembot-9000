@@ -38,6 +38,7 @@ LIGHT_DARK = (
     250.0  # ...where it is completely dark (the client warns that hubs bring light)
 )
 LIGHT_LOST = 350.0  # ...where the robot is lost: back to the base with half its cargo
+LIGHT_WARN = 150.0  # ...where the client gently warns that it is getting dark
 LIGHT_EVERY = 4  # ticks between light checks per player (5 Hz is plenty at 15 tiles/s)
 
 # Control, format and bidi/zero-width code point ranges removed from names and chat.

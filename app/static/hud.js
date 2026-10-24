@@ -420,7 +420,10 @@ function drawHUD(cam, W, H) {
         const ship = canShip(), go = canTravel() || travelMode;
         drawIconButton(fbx - gap, sby, sbR, "ship", ship);
         hudHit.ship = box(fbx - gap);
-        pillLabel("SHIP", fbx - gap, sby - sbR - cap * 1.3, ship ? HUD.neon : HUD.dim, cap);
+        // The tolls the shipment would pay on the way, so you can choose to drive it home yourself.
+        const tolls = parked.id ? shipTolls(parked.id) : 0;
+        const shipLabel = parked.id ? `SHIP \u00b7 ${tolls ? `TOLL ${tolls}` : "FREE"}` : "SHIP";
+        pillLabel(shipLabel, fbx - gap, sby - sbR - cap * 1.3, ship ? (tolls ? HUD.amber : HUD.neon) : HUD.dim, cap);
         drawIconButton(fbx + gap, sby, sbR, "travel", go, travelMode);
         hudHit.travel = box(fbx + gap);
         pillLabel(travelMode ? "TRAVEL ON" : "TRAVEL", fbx + gap, sby - sbR - cap * 1.3, travelMode ? HUD.amber : go ? HUD.neon : HUD.dim, cap);

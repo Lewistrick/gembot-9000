@@ -25,7 +25,8 @@ const G = {
     hubs: new Map(),           // id -> { id, x, y, bn (builder num), out (hub id or -1) }
     carts: new Map(),          // id -> { from, to, t0, a } (interpolated like robots)
     riding: false,
-    light: [100, 250, 350],    // tiles from the nearest hub: starts to darken, pitch dark, lost (from welcome)
+    light: [100, 250, 350],
+    lightWarn: 150,            // tiles from the nearest hub where a small "getting dark" notice appears (from welcome)    // tiles from the nearest hub: starts to darken, pitch dark, lost (from welcome)
     lightD: 0,                 // distance to the nearest hub (the base counts), updated every frame
     dark: 0,                   // how dark the screen is right now, 0..1 (eased)
     showArrows: false,         // lens: arrows to the base, nearest gem and nearest hub
@@ -177,6 +178,7 @@ const HANDLERS = {
         G.me = m.you; G.day = m.day; G.cap = m.cap; G.tickMs = m.tick_ms;
         G.hubCost = m.hub_cost; G.maxTrack = m.max_track;
         if (m.light) G.light = m.light;
+        if (m.light_warn) G.lightWarn = m.light_warn;
         G.maxSpeed = m.max_speed; G.baseR = m.base; G.colors = m.colors; G.mult = m.mult;
         CS = m.chunk;
         G.state = "playing";

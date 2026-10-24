@@ -39,6 +39,8 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 - **Score.** Cargo only scores once **delivered to the base**: drive into the dashed ring
   around the depot, ride in, or ship it. Undelivered cargo is lost at midnight. Banking (driving in or by rail) floats the amount (`+57`)
   up from your robot in the gems' colour; your score pane **blinks** when tolls come in.
+- **Corners.** Two rocks that touch at a corner are a wall: robots can't squeeze diagonally between
+  them (hold forward into the corner to drill one of them).
 - **Drilling.** Hold forward straight into a wall and your drill bores out the tile in front:
   about 1 s and **1 point of cargo** per tile, or **free but 3 s per tile with no cargo**, so
   nobody is ever stuck (some days start in a sealed pocket, 3-7 drilled tiles from the open
@@ -55,10 +57,11 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
   else cancels. Paying part of it from score is asked about afterwards, not shown here. With only one
   possible track nothing needs picking: it is just built. A hub never exists without a track.
 - **Hub menu.** Parked on a hub (or the base) you can only **ship** your gems to the base on their
-  own cart or switch on **travel mode**, which also turns steering off and stays on until you press TRAVEL again (or drive away
+  own cart (the SHIP button shows the tolls it would pay on the way, so you can drive it home
+  yourself instead) or switch on **travel mode**, which also turns steering off and stays on until you press TRAVEL again (or drive away
   from the hubs), and tapping a track leaving your hub rides along it, hop after hop.
 - **Light.** Away from hubs it gets dark: from **100** tiles to the closest hub (the base counts) the
-  screen darkens, at **250** it is pitch black and you are told that hubs are needed for light, and at
+  screen darkens, at **150** a small notice says it is getting dark, at **250** it is pitch black and you are told that hubs are needed for light, and at
   **350** you are *lost*: sent back to the base with **half your cargo** (rounded down, the rest is
   delivered). Build hubs to push the dark back. Riding the rails is never dark-checked.
 - **Paying is cargo-first.** Hubs, tracks and tolls come out of your cargo; if it falls short you
