@@ -18,7 +18,7 @@ from typing import Self
 from zoneinfo import ZoneInfo
 
 from .grid import BASE_RADIUS, DEFAULT_STYLE, World, rock_gem_value
-from .player import DRILL_COST, TICK, Player, Ride
+from .player import DRILL_COST, TICK, Player, Ride, hue_for
 from .rail import CART_SPEED, RIDE_SPEED, Hub, Network, Quote, advance
 
 MAX_PLAYERS = 100
@@ -28,9 +28,8 @@ CHAT_COOLDOWN = 1.0  # seconds between chat changes per player
 IDLE_WARN = 9 * 60.0  # idle seconds before the "still there?" warning
 IDLE_KICK = 10 * 60.0  # idle seconds before the player is removed
 IDLE_CROWD = 10  # idle players are removed only while more than this many are in
-DRILL_GEM_CHANCE = (
-    0.01  # chance that a drilled rock tile holds a gem (valued by distance)
-)
+FOLLOW_IDLE = 5 * 60.0  # no input for this long: inactive, and can't be followed
+DRILL_GEM_CHANCE = 0.01  # chance that a drilled rock holds a gem (valued by distance)
 DISCONNECT_GRACE = 15.0  # seconds a dropped robot lingers before leaving the world
 BOARD_EVERY = 40  # ticks between leaderboard refreshes (2 s at 20 Hz)
 RUSH_START = 23 * 60  # minute of the day when gems become worth double
@@ -213,6 +212,7 @@ class Game:
 
     def _remove(self, player: Player) -> None:
         player.ride = None  # a robot never stays "riding" while out of the world
+        player.follow = None
         player.in_world = False
         self._present = None
         player.connected = False
@@ -285,6 +285,61 @@ class Game:
             player.meta_version += 1
         return True
 
+    # ------------------------------------------------------------------ #
+    # Following another player (an arrow on your screen points at them)
+    # ------------------------------------------------------------------ #
+    def active(self, player: Player) -> bool:
+        """In the mine, connected, and has given input lately (so worth following)."""
+        return (
+            player.in_world
+            and player.connected
+            and self.clock() - player.last_input < FOLLOW_IDLE
+        )
+
+    def follow(self, pid: str, target: str | None) -> None:
+        """Start following ``target`` (one player at a time), or stop with ``None``.
+
+        The followed player is told. Inactive players can't be followed."""
+        player = self.players.get(pid)
+        if player is None or not player.in_world:
+            return
+        self.touch(pid)
+        if target is None:
+            if player.follow is not None:
+                player.follow = None
+                player.notices.append({"t": "following", "id": None})
+            return
+        other = self.players.get(target)
+        if other is None or other is player:
+            return
+        if not self.active(other):
+            player.notices.append(
+                {"t": "following", "id": None, "why": "inactive", "name": other.name}
+            )
+            return
+        if player.follow == other.pid:
+            return
+        player.follow = other.pid
+        player.notices.append(
+            {
+                "t": "following",
+                "id": other.pid,
+                "name": other.name,
+                "hue": hue_for(other.num),
+            }
+        )
+        other.notices.append({"t": "followed", "by": player.name})
+
+    def _check_follow(self, player: Player) -> None:
+        """Stop following someone who left or went inactive."""
+        other = self.players.get(player.follow or "")
+        if other is not None and self.active(other):
+            return
+        player.follow = None
+        why = "inactive" if other is not None and other.in_world else "gone"
+        name = other.name if other is not None else ""
+        player.notices.append({"t": "following", "id": None, "why": why, "name": name})
+
     def announce(self, text: str) -> None:
         self.announcements.append((len(self.announcements) + 1, text))
 
@@ -320,6 +375,13 @@ class Game:
                     player.notices.append(
                         {"t": "warn", "left": int(IDLE_KICK - idle), "why": "idle"}
                     )
+            if self.tick_count % 20 == player.num % 20:  # once a second is plenty
+                inactive = not self.active(player)
+                if inactive != player.inactive:  # shown to others: no following
+                    player.inactive = inactive
+                    player.meta_version += 1
+                if player.follow is not None:
+                    self._check_follow(player)
             if player.ride is not None:
                 self._ride_step(player)
             else:
