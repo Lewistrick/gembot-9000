@@ -384,6 +384,39 @@ function drawFloats(ax, ay, now, colors) {
     ctx.restore();
 }
 
+// A crash: the gems it cost scatter from the robot and vanish quickly, and a small pop-up says how many.
+const CHIP_MS = 650, CRASH_MS = 1400;
+function drawCrash(cam, ax, ay, now, colors) {
+    G.chips = G.chips.filter((c) => now - c.t0 < CHIP_MS);
+    G.crashes = G.crashes.filter((c) => now - c.t0 < CRASH_MS);
+    if (!G.chips.length && !G.crashes.length) return;
+    const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h);
+    ctx.save();
+    for (const c of G.chips) {
+        const t = (now - c.t0) / 1000, k = (1 - Math.exp(-t * 5)) / 5;   // they fly out and slow down
+        const [sx, sy] = screenPos(c.x + c.vx * k, c.y + c.vy * k, cam, cosr, sinr, ax, ay);
+        ctx.globalAlpha = 1 - (now - c.t0) / CHIP_MS;
+        const r = Math.max(1.5, tile * c.r);
+        ctx.fillStyle = colors.gem; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill(); ctx.stroke();
+    }
+    for (const c of G.crashes) {
+        const t = (now - c.t0) / CRASH_MS, fs = clamp(tile * 0.42, 11, 17);
+        ctx.globalAlpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+        const y = ay - tile * 1.6 - t * tile * 0.6, str = `CRASH \u2212${c.v}`;
+        ctx.font = `bold ${fs}px ${HUD.font}`;
+        const w = ctx.measureText(str).width + fs * 2.4, h = fs * 1.75;
+        rr(ax - w / 2, y - h / 2, w, h, h / 2);
+        ctx.fillStyle = "rgba(20,4,4,0.88)"; ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = "#ff6b5e"; ctx.stroke();
+        ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = "#ffd0cb";
+        const tx = ax - w / 2 + fs * 0.6;
+        ctx.fillText(str, tx, y);
+        drawGemIcon(tx + ctx.measureText(str).width + fs * 0.75, y, fs * 0.42, colors.gem);
+    }
+    ctx.restore();
+}
+
 // Light: the robot sees only near a hub (the base is one). Darker from G.light[0] tiles away,
 // pitch black from G.light[1]; the server sends the robot home from G.light[2].
 let wasDark = false, warnedFar = false, lightAt = 0;
@@ -452,6 +485,7 @@ function draw() {
     robotHits.push({ x: ax, y: ay, r: tile * 0.75, me: true });
     drawRobotLabels(ax, ay, G.meta.get(G.me.num) || { name: G.me.name, chat: "", id: G.me.id }, now);
     drawArrows(cam, ax, ay, now);
+    drawCrash(cam, ax, ay, now, colors);
     drawFloats(ax, ay, now, colors);
     drawRailMode(cam, ax, ay, W, H, now);
     drawTravelMode(cam, ax, ay, W, H, now);

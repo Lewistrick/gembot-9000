@@ -25,7 +25,7 @@ class WallWorld(World):
         return None
 
 
-def make(cargo: int = 5, x: float = 19.0) -> tuple[Game, Player]:
+def make(cargo: int = 5, x: float = 19.45) -> tuple[Game, Player]:
     game = Game("2026-10-22", rng=random.Random(1))
     game.world = WallWorld("t")
     p = game.join("a", "Ann")
@@ -63,7 +63,7 @@ def test_with_no_cargo_drilling_is_free_but_slow() -> None:
 
 
 def test_the_drill_takes_a_head_on_hit_without_bouncing() -> None:
-    game, p = make(x=10.0)
+    game, p = make(x=10.0)  # a run-up: this one is about the bounce
     p.speed = 15.0
     for _ in range(25):
         game.tick()

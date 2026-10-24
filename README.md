@@ -39,6 +39,10 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 - **Score.** Cargo only scores once **delivered to the base**: drive into the dashed ring
   around the depot, ride in, or ship it. Undelivered cargo is lost at midnight. Banking (driving in or by rail) floats the amount (`+57`)
   up from your robot in the gems' colour; your score pane **blinks** when tolls come in.
+- **Crashes.** Hitting a wall hard shakes gems out of your cargo and they are lost: nothing below
+  20% of top speed, rising to **10** at top speed (the into-wall part of the speed counts, so a glancing
+  scrape costs little). Only a fresh hit counts: leaning on a wall or drilling on is free. A small
+  pop-up shows the loss while the gems scatter.
 - **Corners.** Two rocks that touch at a corner are a wall: robots can't squeeze diagonally between
   them (hold forward into the corner to drill one of them).
 - **Drilling.** Hold forward straight into a wall and your drill bores out the tile in front:

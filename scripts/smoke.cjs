@@ -432,6 +432,16 @@ function freePort() {
         await new Promise((r) => setTimeout(r, 1900));
         await frames(3);
         out.floatFades = G.floats.length === 0;
+        // A crash scatters gems (they vanish quickly) and shows a small pop-up.
+        HANDLERS.crash({ v: 4 });
+        out.crashChips = G.chips.length === 11 && G.crashes.length === 1 && G.crashes[0].v === 4;
+        await frames(8);                                    // drawn without errors
+        await new Promise((r) => setTimeout(r, 800));
+        await frames(2);
+        out.chipsGone = G.chips.length === 0 && G.crashes.length === 1;   // the pebbles go first, the pop-up a bit later
+        await new Promise((r) => setTimeout(r, 800));
+        await frames(2);
+        out.popupGone = G.crashes.length === 0;
         // Mining a gem floats a gem icon with the amount.
         G.floats.length = 0;
         HANDLERS.gain({ v: 12, mega: false });
@@ -457,6 +467,9 @@ function freePort() {
         ["noBlinkForOwnGems", "banking your own gems doesn't blink the score"],
         ["blink", "a toll makes the score blink"],
         ["floatFades", "the amount fades away"],
+        ["crashChips", "a crash scatters gem pebbles and shows a pop-up"],
+        ["chipsGone", "the pebbles disappear quickly"],
+        ["popupGone", "the pop-up goes away too"],
         ["mineFloat", "mining a gem floats a gem icon with the amount"],
         ["megaFloat", "a mega gem floats too"],
         ["costFloat", "a finished build floats its cost as a negative amount"],

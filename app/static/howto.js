@@ -40,6 +40,11 @@ const SLIDES = [
         lines: ["A drilled tile is open for <b>everyone</b>.", "It stays open for the rest of the day.", "The base itself can't be drilled."],
     },
     {
+        title: "Don't crash.",
+        imgs: [{ shot: "drill", marks: ["wall:box"] }],
+        lines: ["Hitting a wall hard shakes gems out of your <b>cargo</b>: they are lost.", "Up to <b>10</b> at top speed. Slow bumps are free.", "Leaning on a wall or drilling on doesn't count."],
+    },
+    {
         title: "Mind the corners.",
         imgs: [{ shot: "drill", marks: ["wall:box"] }],
         lines: ["Two rocks that touch at a corner block the way.", "You can't squeeze between them diagonally.", "Hold forward into the corner to drill one."],
