@@ -409,6 +409,14 @@ function freePort() {
         await new Promise((r) => setTimeout(r, 1900));
         await frames(3);
         out.floatFades = G.floats.length === 0;
+        // Mining a gem floats a gem icon with the amount.
+        G.floats.length = 0;
+        HANDLERS.gain({ v: 12, mega: false });
+        out.mineFloat = G.floats.length === 1 && G.floats[0].v === 12 && G.floats[0].gem === true;
+        HANDLERS.gain({ v: 300, mega: true });
+        out.megaFloat = G.floats.length === 2 && G.floats[1].mega === true;
+        await frames(6);                                    // drawn without errors
+        G.floats.length = 0;
         // A finished build floats what it cost, as a negative amount; track offers show length and price.
         HANDLERS.built({ v: 39 });
         out.costFloat = G.floats.length === 1 && G.floats[0].v === -39;
@@ -426,6 +434,8 @@ function freePort() {
         ["noBlinkForOwnGems", "banking your own gems doesn't blink the score"],
         ["blink", "a toll makes the score blink"],
         ["floatFades", "the amount fades away"],
+        ["mineFloat", "mining a gem floats a gem icon with the amount"],
+        ["megaFloat", "a mega gem floats too"],
         ["costFloat", "a finished build floats its cost as a negative amount"],
         ["noCostWithoutAmount", "a build without an amount floats nothing"],
         ["labelPlain", "a track offer's box says 'length: 20m' and 'cost: 45'"],
@@ -556,6 +566,7 @@ function freePort() {
         const title = () => document.querySelector("#slide .stitle").textContent;
         const shown = (id) => !document.getElementById(id).classList.contains("hidden");
         out.opens = !howtoEl.classList.contains("hidden") && SLIDES.length >= 10;
+        out.oneImageThreeLines = SLIDES.every((sl) => (!sl.imgs || sl.imgs.length <= 1) && (!sl.lines || sl.lines.length <= 3));
         out.first = title() === "You are a GemBot. Your goal is to collect gems." && $("slideCount").textContent.startsWith("1 /");
         out.firstArrows = shown("slideNext") && !shown("slidePrev");
         out.firstPicture = !!document.querySelector("#slide img") && document.querySelectorAll("#slide .mk").length >= 2;
@@ -568,6 +579,7 @@ function freePort() {
         out.amountChanges = seen.size > 1;
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
         out.third = document.querySelector("#slide .steerbox") !== null && document.querySelectorAll("#slide .steerbox").length === 2
+            && [...document.querySelectorAll("#slide .steerbox")].every((b) => b.querySelectorAll("li").length <= 3)
             && /Keyboard/.test(howtoSlideEl.textContent) && /Phone/.test(howtoSlideEl.textContent);
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
         out.backOne = title().startsWith("Bring gems");
@@ -597,6 +609,7 @@ function freePort() {
     });
     for (const [k, what] of [
         ["opens", "How to Play opens a slideshow"],
+        ["oneImageThreeLines", "every slide has at most one picture and three lines"],
         ["first", "slide 1 is 'You are a GemBot. Your goal is to collect gems.'"],
         ["firstArrows", "slide 1 has only the right arrow"],
         ["firstPicture", "slide 1 has a picture with blinking markers"],

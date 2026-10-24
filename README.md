@@ -32,7 +32,7 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 
 ## The rules
 
-- **Gems.** Drive over one to mine it; it goes into your **cargo** (unlimited) and is gone for
+- **Gems.** Drive over one to mine it (a gem icon and its value float up from your robot); it goes into your **cargo** (unlimited) and is gone for
   *everyone* for the rest of the day. They sit in rock faces, get **rarer but richer** with
   distance from the base (`value × (1 + distance/150)`), and ten rare **mega gems** (250 each)
   hide 60–400 tiles out; they glow amber on the minimap (which also draws hubs, rails and the base) and mining one is announced.
