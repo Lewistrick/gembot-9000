@@ -247,7 +247,11 @@ const HANDLERS = {
         toast(m.winner ? `NEW DAY! Yesterday's winner: ${m.winner.name} (${m.winner.score})`
             : "NEW DAY! A fresh mine awaits.", HUD.amber, 9000);
     },
-    gain(m) { toast(`+${m.v}${m.mega ? "  MEGA GEM!" : ""}`, m.mega ? HUD.amber : HUD.neon, m.mega ? 4500 : 1800); },
+    gain(m) {
+        toast(`+${m.v}${m.mega ? "  MEGA GEM!" : ""}`, m.mega ? HUD.amber : HUD.neon, m.mega ? 4500 : 1800);
+        G.floats.push({ v: m.v, t0: performance.now(), gem: true, mega: !!m.mega });   // a gem icon and the amount rise from the robot
+        if (G.floats.length > 6) G.floats.shift();
+    },
     delivered(m) {
         toast(`BANKED +${m.v}`, "#3ef07a", 3000);
         G.floats.push({ v: m.v, t0: performance.now() });

@@ -256,12 +256,15 @@ function layoutTrackLabels(segs, size, region, avoid) {
     return result;
 }
 
-function drawGemIcon(x, y, s, color) {
-    ctx.save();
-    ctx.fillStyle = color; ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = 1;
+function gemPath(x, y, s) {             // a cut gem centred on (x, y), s from the centre to the tip
     ctx.beginPath();
     ctx.moveTo(x, y - s); ctx.lineTo(x + s * 0.9, y - s * 0.1); ctx.lineTo(x + s * 0.55, y + s * 0.9);
     ctx.lineTo(x - s * 0.55, y + s * 0.9); ctx.lineTo(x - s * 0.9, y - s * 0.1); ctx.closePath();
+}
+function drawGemIcon(x, y, s, color) {
+    ctx.save();
+    ctx.fillStyle = color; ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = 1;
+    gemPath(x, y, s);
     ctx.fill(); ctx.stroke();
     ctx.restore();
 }
@@ -354,10 +357,23 @@ function drawFloats(ax, ay, now, colors) {
         const t = (now - f.t0) / FLOAT_MS, ease = 1 - (1 - t) * (1 - t);
         const y = ay - tile * 1.9 - ease * tile * 2.6;                   // starts above the name tag, drifts up
         ctx.globalAlpha = t < 0.45 ? 1 : 1 - (t - 0.45) / 0.55;           // holds, then fades
-        const str = f.v < 0 ? `\u2212${-f.v}` : `+${f.v}`;      // banked gems rise as +n, what a build cost as \u2212n
-        ctx.lineWidth = fs * 0.34; ctx.strokeStyle = "rgba(4,10,14,0.92)"; ctx.strokeText(str, ax, y);
-        ctx.shadowColor = colors.gem; ctx.shadowBlur = fs * 0.5;
-        ctx.fillStyle = colors.gem; ctx.fillText(str, ax, y);
+        // banked gems rise as +n, what a build cost as \u2212n, a mined gem as [gem] n
+        const str = f.gem ? String(f.v) : f.v < 0 ? `\u2212${-f.v}` : `+${f.v}`;
+        const color = f.mega ? "#ffd64d" : colors.gem;
+        let x = ax;
+        if (f.gem) {
+            const icon = fs * 0.42, w = ctx.measureText(str).width, gap = fs * 0.2;
+            x = ax + (icon * 2 + gap) / 2;                                  // centre icon + number together
+            const gx = x - w / 2 - gap - icon;
+            ctx.lineWidth = fs * 0.3; ctx.strokeStyle = "rgba(4,10,14,0.92)";
+            gemPath(gx, y, icon); ctx.stroke();                              // dark outline, like the text's
+            ctx.shadowColor = color; ctx.shadowBlur = fs * 0.5;
+            ctx.fillStyle = color; gemPath(gx, y, icon); ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+        ctx.lineWidth = fs * 0.34; ctx.strokeStyle = "rgba(4,10,14,0.92)"; ctx.strokeText(str, x, y);
+        ctx.shadowColor = color; ctx.shadowBlur = fs * 0.5;
+        ctx.fillStyle = color; ctx.fillText(str, x, y);
         ctx.shadowBlur = 0;
     }
     ctx.restore();

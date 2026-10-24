@@ -5,6 +5,8 @@
 // A marker is "name:kind": box or ring (drawn around the thing), or arrow-down / arrow-up /
 // arrow-left / arrow-right (an arrow next to it that points in that direction).
 
+// Every slide has at most one picture and at most three short lines (a picture shown
+// beside another got too small on a phone).
 const SLIDES = [
     {
         title: "You are a GemBot. Your goal is to collect gems.",
@@ -19,69 +21,113 @@ const SLIDES = [
     { title: "Steer your GemBot.", custom: "steering" },
     {
         title: "Far-away gems are worth more.",
-        imgs: [{ shot: "mega", marks: ["gem:ring", "gem:arrow-down", "minimap:box"] }],
-        lines: ["The farther from the base, the <b>richer</b> the gems.", "They are also <b>rarer</b>.", "<b>Mega gems</b> glow amber and are worth a lot.", "The <b>minimap</b> shows them too."],
+        imgs: [{ shot: "mega", marks: ["gem:ring", "gem:arrow-down"] }],
+        lines: ["The farther from the base, the <b>richer</b> the gems.", "They are also <b>rarer</b>.", "<b>Mega gems</b> glow amber and are worth a lot."],
+    },
+    {
+        title: "Spot them on the minimap.",
+        imgs: [{ shot: "mega", marks: ["minimap:box"] }],
+        lines: ["The <b>minimap</b> shows the gems around you.", "Mega gems show up <b>amber</b> there too."],
     },
     {
         title: "Drill through walls.",
         imgs: [{ shot: "drill", marks: ["wall:box", "wall:arrow-down"] }],
-        lines: ["<b>Hold forward</b> into a wall.", "Each tile takes <b>1 second</b> and costs <b>1 cargo</b>.", "No cargo? It's <b>free</b>, but takes <b>3 seconds</b>.", "A drilled tile is open for <b>everyone</b>.", "The base itself can't be drilled."],
+        lines: ["<b>Hold forward</b> into a wall.", "Each tile takes <b>1 second</b> and costs <b>1 cargo</b>.", "No cargo? It's <b>free</b>, but takes <b>3 seconds</b>."],
+    },
+    {
+        title: "Tunnels are for everyone.",
+        imgs: [{ shot: "drill", marks: ["wall:box"] }],
+        lines: ["A drilled tile is open for <b>everyone</b>.", "It stays open for the rest of the day.", "The base itself can't be drilled."],
     },
     {
         title: "Build a hub to start a rail.",
-        imgs: [
-            { shot: "hubbtn", marks: ["hub:box", "hub:arrow-down"] },
-            { shot: "ghosts", marks: ["priceA:box", "priceB:box"] },
-        ],
-        lines: ["Stand still and tap <b>HUB</b>.", "It only shows if you can <b>pay</b> for a hub.", "Each see-through track has a box with its <b>length</b> and <b>cost</b>.", "<b>Tap one</b> to build the hub with that track.", "The cost floats up from your robot.", "Tap anywhere else to cancel.", "With only one choice, it is just built."],
+        imgs: [{ shot: "hubbtn", marks: ["hub:box", "hub:arrow-down"] }],
+        lines: ["Stand still and tap <b>HUB</b>.", "It only shows if you can <b>pay</b> for a hub."],
+    },
+    {
+        title: "Pick a track.",
+        imgs: [{ shot: "ghosts", marks: ["priceA:box", "priceB:box"] }],
+        lines: ["Each see-through track has a box with its <b>length</b> and <b>cost</b>.", "<b>Tap a track</b> (or its box) to build it with the hub.", "Tap anywhere else to cancel."],
     },
     {
         title: "Rail rules.",
         imgs: [{ shot: "ghosts", marks: ["priceA:box", "priceB:box"] }],
-        lines: ["A hub costs <b>25</b>. A track costs <b>1 per tile</b>.", "Tracks are <b>straight</b>, up to <b>60 tiles</b>.", "Tracks need <b>floor</b> all the way.", "Every hub has <b>one track</b> leading home.", "So all hubs connect to the <b>base</b>.", "Everything is <b>shared</b> by all players."],
+        lines: ["A hub costs <b>25</b>. A track costs <b>1 per tile</b>.", "Tracks are <b>straight</b>, up to <b>60 tiles</b>, over <b>floor</b> only.", "The cost floats up from your robot when it's built."],
+    },
+    {
+        title: "All rails lead home.",
+        imgs: [{ shot: "network", marks: ["base:ring"] }],
+        lines: ["Every hub has <b>one track</b> leading home.", "So all hubs connect to the <b>base</b>.", "Everything is <b>shared</b> by all players."],
     },
     {
         title: "Park on a hub to ship or travel.",
-        imgs: [{ shot: "travel", marks: ["ship:box", "travel:box", "tollPill:box"] }],
-        lines: ["Stand still on a hub (or the base).", "<b>SHIP</b> sends your cargo home on a cart.", "<b>TRAVEL</b> turns travel mode on.", "Then <b>tap a track</b> to ride along it.", "Press <b>TRAVEL</b> again to stop.", "Steering is off while you travel."],
+        imgs: [{ shot: "travel", marks: ["ship:box", "travel:box"] }],
+        lines: ["Stand still on a hub (or the base).", "<b>SHIP</b> sends your cargo home on a cart.", "<b>TRAVEL</b> turns travel mode on."],
+    },
+    {
+        title: "Travel mode.",
+        imgs: [{ shot: "travel", marks: ["tollPill:box", "travel:box"] }],
+        lines: ["<b>Tap a track</b> to ride along it.", "Steering is off while you travel.", "Press <b>TRAVEL</b> again to stop."],
     },
     {
         title: "Cargo pays first.",
         imgs: [{ shot: "pay", marks: ["question:box", "yes:box"] }],
-        lines: ["Hubs, tracks and tolls come out of your <b>cargo</b>.", "Short? You are <b>asked</b> to use your score.", "Nothing leaves your score without a <b>yes</b>.", "Each hub of someone else on your trip costs <b>1</b> (a <b>toll</b>).", "Your own hubs and the base are free."],
+        lines: ["Hubs, tracks and tolls come out of your <b>cargo</b>.", "Short? You are <b>asked</b> to use your score.", "Nothing leaves your score without a <b>yes</b>."],
+    },
+    {
+        title: "Tolls.",
+        imgs: [{ shot: "travel", marks: ["tollPill:box", "tollPill:arrow-down"] }],
+        lines: ["Each hub of someone else on your trip costs <b>1</b>.", "Your own hubs and the base are free.", "Each track shows its toll in travel mode."],
     },
     {
         title: "Earn tolls from your hubs.",
         imgs: [{ shot: "day", marks: ["score:box", "score:arrow-up"] }],
-        lines: ["Players riding over <b>your hubs</b> pay you.", "Gems shipped over them pay you too.", "Each toll is <b>1 point</b>.", "Your <b>score blinks</b> when one comes in."],
+        lines: ["Players riding over <b>your hubs</b> pay you <b>1</b> each.", "Gems shipped over them pay you too.", "Your <b>score blinks</b> when a toll comes in."],
     },
     {
         title: "Stay in the light.",
-        imgs: [{ shot: "dim", marks: [] }, { shot: "dark", marks: ["banner:box"] }],
-        lines: ["Hubs light up the mine. The <b>base</b> is a hub.", "<b>100 tiles</b> from the closest hub, it gets darker.", "At <b>250</b> it is pitch black.", "At <b>350</b> you are <b>lost</b>.", "You return to the base and lose <b>half your cargo</b>.", "Build hubs to push the dark back."],
+        imgs: [{ shot: "dim", marks: [] }],
+        lines: ["Hubs light up the mine. The <b>base</b> is a hub.", "<b>100 tiles</b> from the closest hub, it gets darker.", "Build hubs to push the dark back."],
+    },
+    {
+        title: "Don't get lost.",
+        imgs: [{ shot: "dark", marks: ["banner:box"] }],
+        lines: ["At <b>250 tiles</b> it is pitch black.", "At <b>350</b> you are <b>lost</b>.", "You return to the base and lose <b>half your cargo</b>."],
     },
     {
         title: "Find your way.",
-        imgs: [
-            { shot: "aids", marks: ["lens:box", "map:box", "network:box"] },
-            { shot: "network", marks: ["you:ring", "base:ring", "cross:box"] },
-        ],
-        lines: ["The <b>lens</b> shows arrows to the base, the nearest gem and the nearest hub.", "The <b>map</b> shows a minimap around you.", "The <b>network</b> button shows all rails, north up.", "<b>Drag</b> to pan. <b>Scroll</b> or <b>pinch</b> to zoom.", "Leave with the <b>cross</b>."],
+        imgs: [{ shot: "aids", marks: ["lens:box", "map:box", "network:box"] }],
+        lines: ["The <b>lens</b> shows arrows to the base, the nearest gem and the nearest hub.", "The <b>map</b> shows a minimap around you.", "The <b>network</b> button shows all the rails."],
     },
     {
-        title: "Chat and block.",
-        imgs: [{ shot: "chat", marks: ["mine:box", "other:box"] }],
-        lines: ["<b>Tap your robot</b> to type a message.", "It floats above you until you change it.", "<b>Tap another robot</b> to open its menu.", "There you can <b>block</b> their chat.", "Blocking only hides bubbles for <b>you</b>."],
+        title: "The rail network.",
+        imgs: [{ shot: "network", marks: ["you:ring", "base:ring", "cross:box"] }],
+        lines: ["North is up. <b>You</b> and the <b>base</b> are marked.", "<b>Drag</b> to pan. <b>Scroll</b> or <b>pinch</b> to zoom.", "Leave with the <b>cross</b>."],
+    },
+    {
+        title: "Chat.",
+        imgs: [{ shot: "chat", marks: ["mine:box"] }],
+        lines: ["<b>Tap your robot</b> to type a message.", "It floats above you until you change it."],
+    },
+    {
+        title: "Block.",
+        imgs: [{ shot: "chat", marks: ["other:box"] }],
+        lines: ["<b>Tap another robot</b> to open its menu.", "There you can <b>block</b> their chat.", "Blocking only hides bubbles for <b>you</b>."],
     },
     {
         title: "One mine, one day.",
-        imgs: [{ shot: "day", marks: ["clock:box", "score:box"] }],
-        lines: ["A <b>new mine</b> opens every day, the same for everyone.", "Up to <b>100 players</b> dig together.", "The most <b>banked</b> gems at midnight wins.", "The winner wears a <b>crown</b> the next day.", "In the <b>last hour</b>, every gem is worth <b>double</b>."],
+        imgs: [{ shot: "day", marks: ["score:box"] }],
+        lines: ["A <b>new mine</b> opens every day, the same for everyone.", "Up to <b>100 players</b> dig together.", "The most <b>banked</b> gems at midnight wins."],
+    },
+    {
+        title: "Crown and rush hour.",
+        imgs: [{ shot: "day", marks: ["clock:box"] }],
+        lines: ["The winner wears a <b>crown</b> the next day.", "In the <b>last hour</b>, every gem is worth <b>double</b>.", "The clock shows how long the day has left."],
     },
     {
         title: "Stay active.",
         imgs: [{ shot: "idle", marks: ["banner:box"] }],
-        lines: ["No input for <b>10 minutes</b> removes you.", "You get a warning at <b>9 minutes</b>.", "Your score and cargo are <b>kept</b> for the day.", "Rejoin to carry on.", "Your name is yours for the day."],
+        lines: ["No input for <b>10 minutes</b> removes you.", "You get a warning at <b>9 minutes</b>.", "Rejoin any time: score, cargo and name are <b>kept</b> for the day."],
     },
     { title: "Handy keys.", custom: "keys" },
 ];
@@ -108,8 +154,7 @@ function steeringSlide() {
                 ${keyCap("&larr;<small>A</small>", "hl d1")}${keyCap("&darr;<small>S</small>", "hl d2")}${keyCap("&rarr;<small>D</small>", "hl d1")}
             </div>
             <ul class="slines">
-                <li><b>&uarr;</b> go faster</li>
-                <li><b>&darr;</b> brake</li>
+                <li><b>&uarr;</b> faster, <b>&darr;</b> brake</li>
                 <li><b>&larr; &rarr;</b> turn</li>
                 <li><b>Space</b> turn around (180&deg;)</li>
             </ul>
@@ -123,10 +168,9 @@ function steeringSlide() {
                 <div class="flip hl d2">&#8635;</div>
             </div>
             <ul class="slines">
-                <li><b>Hold</b> the left or right half</li>
+                <li><b>Hold</b> the left or right half to turn</li>
                 <li><b>Both</b> halves: straight on</li>
-                <li><b>Lift</b> your fingers to brake</li>
-                <li><b>&#8635;</b> turns you around</li>
+                <li><b>Lift</b> your fingers to brake, <b>&#8635;</b> turns you around</li>
             </ul>
         </div>
     </div>`;
