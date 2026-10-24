@@ -130,18 +130,23 @@ function pillText(str, x, y, color) {
 }
 
 // ---- Lens: arrows around the robot to the base, the nearest gem and the nearest hub ----
+const lensTargets = [];   // what the lens pointed at in the last frame (for tests)
 function drawArrows(cam, ax, ay, now) {
+    lensTargets.length = 0;
     if (!G.showArrows) return;
     const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h), targets = [];
     targets.push({ x: 0, y: 0, color: HUD.amber, ring: 2.5 });                         // the base: yellow
     const gem = nearestGem(cam.x, cam.y);
-    if (gem) targets.push({ x: gem[0], y: gem[1], color: gem[2] ? "#ffd64d" : curColors().gem, ring: 2.0 });
+    // the nearest gem in its colour; a mega gem white with a gem-coloured glow (amber would look like the base)
+    if (gem) targets.push(gem[2] ? { x: gem[0], y: gem[1], color: "#ffffff", glow: curColors().gem, blur: 12, ring: 2.0, mega: true }
+        : { x: gem[0], y: gem[1], color: curColors().gem, ring: 2.0 });
     let hub = null, hd = Infinity;
     for (const h of G.hubs.values()) {
         const d = Math.hypot(h.x - cam.x, h.y - cam.y);
         if (d < hd) { hd = d; hub = h; }
     }
     if (hub) targets.push({ x: hub.x, y: hub.y, color: "#aab2c0", ring: 1.5 });         // the nearest hub: gray
+    lensTargets.push(...targets);
     ctx.save();
     ctx.lineJoin = "round";
     for (const t of targets) {
@@ -156,7 +161,7 @@ function drawArrows(cam, ax, ay, now) {
         ctx.lineTo(bx + uy * half, by - ux * half);
         ctx.closePath();
         ctx.fillStyle = t.color; ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = Math.max(2, tile * 0.07);
-        ctx.shadowColor = t.color; ctx.shadowBlur = 6;
+        ctx.shadowColor = t.glow || t.color; ctx.shadowBlur = t.blur || 6;
         ctx.stroke(); ctx.fill();
         ctx.shadowBlur = 0;
         const fs = Math.max(10, tile * 0.34), lx = bx + ux * (len + fs * 0.9), ly = by + uy * (len + fs * 0.9);
@@ -381,7 +386,7 @@ function drawFloats(ax, ay, now, colors) {
 
 // Light: the robot sees only near a hub (the base is one). Darker from G.light[0] tiles away,
 // pitch black from G.light[1]; the server sends the robot home from G.light[2].
-let wasDark = false, lightAt = 0;
+let wasDark = false, warnedFar = false, lightAt = 0;
 function updateLight(now) {
     let d = Math.hypot(G.x, G.y);
     for (const h of G.hubs.values()) d = Math.min(d, Math.hypot(h.x - G.x, h.y - G.y));
@@ -393,6 +398,14 @@ function updateLight(now) {
     const pitch = d >= dark;
     if (pitch && !wasDark) toast("It is pitch dark here. Hubs are required to provide light!", HUD.amber, 6000);
     wasDark = pitch;
+    // A gentle heads-up well before that: one small notice each time you pass G.lightWarn
+    // (it re-arms once you are 10 tiles back inside).
+    if (!warnedFar && d >= G.lightWarn && !pitch) {
+        toast(`Getting dark: ${Math.round(G.lightWarn)} m from the nearest hub`, "#d9c58a", 3000);
+        warnedFar = true;
+    } else if (warnedFar && d < G.lightWarn - 10) {
+        warnedFar = false;
+    }
 }
 
 function draw() {

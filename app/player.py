@@ -201,12 +201,17 @@ class Player:
         if not (dx or dy):
             return
         floor = world.is_floor
-        if floor(round(self.x + dx), round(self.y + dy)):
+        cx, cy = round(self.x), round(self.y)
+        nx, ny = round(self.x + dx), round(self.y + dy)
+        # Stepping diagonally into the next tile needs at least one of the two tiles beside
+        # that corner open: no squeezing between two rocks that touch at a corner.
+        pinched = nx != cx and ny != cy and not floor(nx, cy) and not floor(cx, ny)
+        if floor(nx, ny) and not pinched:
             self.x += dx
             self.y += dy
             return
-        bx = not floor(round(self.x + dx), round(self.y))  # blocked in x
-        by = not floor(round(self.x), round(self.y + dy))  # blocked in y
+        bx = not floor(nx, cy)  # blocked in x
+        by = not floor(cx, ny)  # blocked in y
         if not bx and not by:  # clipped a diagonal corner
             bx = by = True
         total = math.hypot(vx, vy) or 1e-9
@@ -216,8 +221,13 @@ class Player:
             # takes the hit (no bounce) and bores into the tile in front.
             self.speed = 0.0
             self.kx = self.ky = 0.0
-            tx = round(self.x + dx) if bx else round(self.x)
-            ty = round(self.y + dy) if by else round(self.y)
+            if (
+                pinched
+            ):  # bore into one of the two rocks: the one more ahead of the robot
+                tx, ty = (nx, cy) if abs(vx) >= abs(vy) else (cx, ny)
+            else:
+                tx = nx if bx else cx
+                ty = ny if by else cy
             self._press_drill((tx, ty), dt)
             return
         if not bx:  # slide along whichever axis is still open

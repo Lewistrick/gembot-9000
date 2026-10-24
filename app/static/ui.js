@@ -199,12 +199,24 @@ function doShip() {
     if (!h) return;
     if (h.id === 0) toast("You are already at the base.", HUD.amber, 2500);
     else if (G.cargo <= 0) toast("You carry no gems to ship.", HUD.amber, 2500);
+    else if (G.cargo <= shipTolls(h.id)) toast(`The tolls (${shipTolls(h.id)}) would eat the whole shipment.`, HUD.amber, 3000);
     else if (!linkedToBase(h.id)) toast("This hub isn't linked to the base.", HUD.amber, 2500);
     else send({ action: "send_cargo" });
 }
 function canShip() {
     const h = parkedHub();
-    return !!h && h.id !== 0 && G.cargo > 0 && linkedToBase(h.id);
+    return !!h && h.id !== 0 && G.cargo > shipTolls(h.id) && linkedToBase(h.id);   // the tolls must not eat the whole shipment
+}
+// Tolls a shipment from hub `id` pays on its way to the base: 1 per hub of another player on the route.
+function shipTolls(id) {
+    let n = 0;
+    for (let cur = id, k = 0; cur !== 0 && k < 1000; k++) {
+        const h = G.hubs.get(cur);
+        if (!h) break;
+        if (h.bn && G.me && h.bn !== G.me.num) n++;
+        cur = h.out;
+    }
+    return n;
 }
 
 // -- Travel mode: the TRAVEL button switches it on and off --

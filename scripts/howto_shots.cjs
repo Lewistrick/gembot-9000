@@ -65,7 +65,7 @@ function installHelpers() {
         G.cargo = 0; G.score = 0; G.rank = null; G.drill = 0; G.speed = 0; G.dark = 0; G.lightD = 0;
         G.light = [100, 250, 350]; G.showArrows = G.showMap = G.showNetwork = false;
         G.idleUntil = 0; G.mult = 1; G.leftAt = 0; G.riding = false; G.flipping = false; G.bump = 0;
-        travelMode = false; railMode = null; wasDark = false;
+        travelMode = false; railMode = null; wasDark = false; warnedFar = false;
         payBarEl.classList.add("hidden");
         if (G.me) G.meta.set(G.me.num, { n: G.me.num, id: G.me.id, name: G.me.name, chat: "", hue: G.me.hue });
     };

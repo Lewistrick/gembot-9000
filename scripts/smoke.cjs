@@ -189,6 +189,15 @@ function freePort() {
             G.hubs.set(1, { id: 1, x: G.x, y: G.y, bn: 2, out: 0 });
             G.cargo = 5; await frames();
             out.onlyShipTravel = !!parkedHub() && !!hudHit.ship && !!hudHit.travel && !hudHit.placeHub && canShip() && canTravel();
+            // SHIP shows what the shipment would pay in tolls on its way home.
+            out.shipToll = shipTolls(1) === 1;
+            G.hubs.set(3, { id: 3, x: G.x + 40, y: G.y, bn: G.me.num, out: 1 });   // mine, then Bob's, then the base
+            G.hubs.set(4, { id: 4, x: G.x + 80, y: G.y, bn: 5, out: 3 });
+            out.shipTollChain = shipTolls(3) === 1 && shipTolls(4) === 2 && shipTolls(0) === 0;
+            G.cargo = 1;
+            out.shipNotWhenTollsEatIt = !canShip();
+            G.cargo = 5;
+            G.hubs.delete(3); G.hubs.delete(4);
             const near = (s, f) => [s.ax + (s.bx - s.ax) * f, s.ay + (s.by - s.ay) * f];
             const click = (b) => canvas.dispatchEvent(new MouseEvent("click",
                 { clientX: canvas.getBoundingClientRect().left + b.x + b.w / 2, clientY: canvas.getBoundingClientRect().top + b.y + b.h / 2, bubbles: true }));
@@ -270,6 +279,9 @@ function freePort() {
         ["payCancel", "cancelling the dialog pays nothing"],
         ["payYes", "agreeing re-sends the action with pay_score"],
         ["onlyShipTravel", "parked on a hub: only Ship and Travel"],
+        ["shipToll", "SHIP counts the tolls the shipment would pay"],
+        ["shipTollChain", "the tolls count every other player's hub on the way to the base"],
+        ["shipNotWhenTollsEatIt", "SHIP is off when the tolls would eat the whole shipment"],
         ["travelOff", "travel mode starts off"],
         ["travelIdleTap", "tapping the map does nothing while travel mode is off"],
         ["travelOn", "TRAVEL switches travel mode on"],
@@ -314,6 +326,16 @@ function freePort() {
         G.hubs.set(1, { id: 1, x: Math.round(G.x) + 6, y: Math.round(G.y), bn: 2, out: 0 });
         await frames(); await frames();                  // arrows to the base, a gem (if any) and the hub draw
         out.nearestGem = nearestGem(G.x, G.y) === null || nearestGem(G.x, G.y).length === 3;
+        // A mega gem's arrow is white with a gem-coloured glow, so it can't be taken for the base's.
+        const ng = nearestGem(G.x, G.y);
+        if (ng) {
+            const c = [...chunks.values()].find((ch) => ch.gems.some((g) => g[0] === ng[0] && g[1] === ng[1]));
+            c.mega.add(ng[0] + "," + ng[1]);
+            await frames();
+            const t = lensTargets.find((x) => x.mega);
+            out.megaArrow = !!t && t.color === "#ffffff" && t.glow === curColors().gem && t.color !== lensTargets[0].color;
+            c.mega.delete(ng[0] + "," + ng[1]);
+        } else out.megaArrow = true;
         click(hudHit.lens);
         out.arrowsOff = G.showArrows === false;
         click(hudHit.minimap);
@@ -376,6 +398,7 @@ function freePort() {
         ["buttons", "the lens and minimap buttons are in the top bar"],
         ["arrowsOn", "the lens button shows the arrows"],
         ["nearestGem", "the nearest gem can be found"],
+        ["megaArrow", "the arrow to a mega gem is white with a gem-coloured glow"],
         ["arrowsOff", "clicking the lens again hides them"],
         ["mapOn", "the minimap button shows the minimap"],
         ["mapOff", "clicking it again hides the minimap"],
@@ -488,6 +511,7 @@ function freePort() {
             await frames(60);
             out.dim = G.dark > 0.45 && G.dark < 0.55;
             out.noNoticeYet = !G.toasts.some((t) => t.text.includes("pitch dark"));
+            out.gentleWarn = G.toasts.filter((t) => t.text.startsWith("Getting dark")).length === 1;
             at(260, 0);
             await frames(90);
             out.black = G.dark === 1 && G.lightD >= G.light[1];
@@ -512,6 +536,7 @@ function freePort() {
         ["litNearBase", "no darkness near the base"],
         ["dim", "halfway between 100 and 250 tiles from a hub the screen is half dark"],
         ["noNoticeYet", "no darkness notice before it is pitch dark"],
+        ["gentleWarn", "past 150 tiles a small 'getting dark' notice shows once"],
         ["black", "completely dark at 250 tiles"],
         ["pitchNotice", "pitch black says hubs are required to provide light"],
         ["hubLights", "a hub nearby brings the light back"],

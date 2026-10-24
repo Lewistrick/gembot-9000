@@ -40,6 +40,11 @@ const SLIDES = [
         lines: ["A drilled tile is open for <b>everyone</b>.", "It stays open for the rest of the day.", "The base itself can't be drilled."],
     },
     {
+        title: "Mind the corners.",
+        imgs: [{ shot: "drill", marks: ["wall:box"] }],
+        lines: ["Two rocks that touch at a corner block the way.", "You can't squeeze between them diagonally.", "Hold forward into the corner to drill one."],
+    },
+    {
         title: "Build a hub to start a rail.",
         imgs: [{ shot: "hubbtn", marks: ["hub:box", "hub:arrow-down"] }],
         lines: ["Stand still and tap <b>HUB</b>.", "It only shows if you can <b>pay</b> for a hub."],
@@ -62,7 +67,7 @@ const SLIDES = [
     {
         title: "Park on a hub to ship or travel.",
         imgs: [{ shot: "travel", marks: ["ship:box", "travel:box"] }],
-        lines: ["Stand still on a hub (or the base).", "<b>SHIP</b> sends your cargo home on a cart.", "<b>TRAVEL</b> turns travel mode on."],
+        lines: ["Stand still on a hub (or the base).", "<b>SHIP</b> sends your cargo home on a cart (it shows the <b>tolls</b> on the way).", "<b>TRAVEL</b> turns travel mode on."],
     },
     {
         title: "Travel mode.",
@@ -87,7 +92,7 @@ const SLIDES = [
     {
         title: "Stay in the light.",
         imgs: [{ shot: "dim", marks: [] }],
-        lines: ["Hubs light up the mine. The <b>base</b> is a hub.", "<b>100 tiles</b> from the closest hub, it gets darker.", "Build hubs to push the dark back."],
+        lines: ["Hubs light up the mine. The <b>base</b> is a hub.", "<b>100 tiles</b> from the closest hub, it gets darker.", "At <b>150</b> you get a small warning."],
     },
     {
         title: "Don't get lost.",
