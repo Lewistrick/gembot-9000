@@ -134,6 +134,10 @@ function freePort() {
             out.hubMode = !!railMode && railMode.kind === "hub" && overlayOpen() && !canSteer();
             const hs = segsOf();
             out.hubSegs = hs.length === 2;
+            // Every offer has a small box (length, price) and they don't overlap or leave the screen.
+            out.boxes = railLabelHits.length === 2 && railLabelHits.every((h) => h.w > 0 && h.x >= 0 && h.y >= 0 && h.x + h.w <= W && h.y + h.h <= H);
+            const [b0, b1] = railLabelHits;
+            out.boxesApart = !(b0.x < b1.x + b1.w && b1.x < b0.x + b0.w && b0.y < b1.y + b1.h && b1.y < b0.y + b0.h);
             const [mx, my] = mid(hs.find((s) => s.to === 1));
             railTap(mx, my + 1);
             out.hubBuilt = sent.some((m) => m.action === "build_hub" && m.to === 1 && m.x === gx && m.y === gy) && !railMode;
@@ -144,6 +148,26 @@ function freePort() {
             railTap(W - 4, 4);
             out.hubCloses = !railMode && sent.length === 0;
 
+            // The small box of a track is clickable too: tapping it picks that track.
+            HANDLERS.hubopts({ x: gx, y: gy, opts: [
+                { to: 0, x: 0, y: 0, cost: 40, short: 0, len: 15, linked: true },
+                { to: 1, x: gx + 12, y: gy, cost: 37, short: 0, len: 12, linked: true }] });
+            await frames();
+            const box0 = railLabelHits.find((h) => h.to === 0);
+            railTap(box0.x + box0.w / 2, box0.y + box0.h / 2);
+            out.boxTap = sent.length === 1 && sent[0].action === "build_hub" && sent[0].to === 0 && !railMode;
+            sent.length = 0;
+            // The layout copes with tracks that leave in almost the same direction and that run off the screen.
+            const sizeB = { w: 96, h: 34 }, region = { x0: 4, y0: 70, x1: W - 4, y1: H - 90 }, avoid = [{ x: W / 2 - 30, y: H * ANCHOR_Y - 30, w: 60, h: 60 }];
+            const fan = (angles, len) => angles.map((a) => ({ ax: W / 2, ay: H * ANCHOR_Y, bx: W / 2 + Math.sin(a) * len, by: H * ANCHOR_Y - Math.cos(a) * len }));
+            const apart = (rs) => rs.every((r, i) => rs.every((q, j) => i === j || !(r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h)));
+            const inside = (rs) => rs.every((r) => r.x >= region.x0 - 1 && r.y >= region.y0 - 1 && r.x + r.w <= region.x1 + 1 && r.y + r.h <= region.y1 + 1);
+            const clearOf = (rs) => rs.every((r) => !(r.x < avoid[0].x + avoid[0].w && avoid[0].x < r.x + r.w && r.y < avoid[0].y + avoid[0].h && avoid[0].y < r.y + r.h));
+            const cases = [fan([0, 0.05, 0.1], 900), fan([0, 1.2, 2.4, 3.6], 1500), fan([0.3, 0.32, 0.34, 0.36], 60), fan([-1.5, 1.5, 3.1], 400)];
+            const laid = cases.map((c) => layoutTrackLabels(c, sizeB, region, avoid).map((p) => p.rect));
+            out.layoutApart = laid.every(apart);
+            out.layoutOnScreen = laid.every(inside);
+            out.layoutClearOfRobot = laid.every(clearOf);
             // Only one possible track: nothing to pick, it is built straight away.
             HANDLERS.hubopts({ x: gx, y: gy, opts: [{ to: 1, x: gx + 12, y: gy, cost: 37, short: 0, len: 12, linked: true }] });
             out.singleBuilds = !railMode && sent.length === 1 && sent[0].action === "build_hub" && sent[0].to === 1
@@ -233,6 +257,12 @@ function freePort() {
         ["shownWhenRich", "the HUB button shows when the player can pay"],
         ["hubMode", "HUB opens a mode that stops steering"],
         ["hubSegs", "HUB offers each candidate as a track"],
+        ["boxes", "each track offer has a box that is on screen"],
+        ["boxesApart", "the boxes don't overlap"],
+        ["boxTap", "tapping a track's box picks that track"],
+        ["layoutApart", "labels of nearly parallel or off-screen tracks don't overlap"],
+        ["layoutOnScreen", "labels stay inside the screen area"],
+        ["layoutClearOfRobot", "labels stay off the robot"],
         ["hubBuilt", "tapping a ghost track builds that one"],
         ["hubCloses", "tapping outside every track closes the HUB menu"],
         ["singleBuilds", "a single possible track is built without asking to pick it"],
@@ -363,6 +393,45 @@ function freePort() {
         ["netEsc", "Escape leaves the network map"],
     ]) check(aids[k] === true, what);
 
+    // --- Banking: a "+amount" floats up from the robot and fades; tolls make the score blink ---
+    const bank = await a.evaluate(async () => {
+        const frames = (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+        const out = {};
+        G.floats.length = 0; G.scoreFlash = 0; G.toasts.length = 0;
+        HANDLERS.delivered({ v: 57 });
+        out.floatAdded = G.floats.length === 1 && G.floats[0].v === 57;
+        await frames(12);                                  // drawn (above the robot) without errors
+        out.floatStays = G.floats.length === 1;
+        out.noBlinkForOwnGems = G.scoreFlash === 0;
+        HANDLERS.toll({ v: 1, from: "Zed" });
+        out.blink = performance.now() - G.scoreFlash < 100;
+        await frames(12);
+        await new Promise((r) => setTimeout(r, 1900));
+        await frames(3);
+        out.floatFades = G.floats.length === 0;
+        // A finished build floats what it cost, as a negative amount; track offers show length and price.
+        HANDLERS.built({ v: 39 });
+        out.costFloat = G.floats.length === 1 && G.floats[0].v === -39;
+        await frames(6);
+        out.noCostWithoutAmount = (HANDLERS.built({}), G.floats.length === 1);
+        G.floats.length = 0;
+        out.labelPlain = JSON.stringify(trackLabelLines({ len: 19.6, cost: 45, short: 0 })) === JSON.stringify(["length: 20m", "cost: 45"]);
+        out.labelNoScore = JSON.stringify(trackLabelLines({ len: 20, cost: 45, short: 15 })) === JSON.stringify(["length: 20m", "cost: 45"]);   // paying by score is asked about afterwards
+        G.toasts.length = 0; G.scoreFlash = 0;
+        return out;
+    });
+    for (const [k, what] of [
+        ["floatAdded", "banking gems floats the amount above the robot"],
+        ["floatStays", "the amount stays for a moment"],
+        ["noBlinkForOwnGems", "banking your own gems doesn't blink the score"],
+        ["blink", "a toll makes the score blink"],
+        ["floatFades", "the amount fades away"],
+        ["costFloat", "a finished build floats its cost as a negative amount"],
+        ["noCostWithoutAmount", "a build without an amount floats nothing"],
+        ["labelPlain", "a track offer's box says 'length: 20m' and 'cost: 45'"],
+        ["labelNoScore", "the box never mentions paying from score"],
+    ]) check(bank[k] === true, what);
+
     // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---
     const light = await a.evaluate(async () => {
         const frames = (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
@@ -446,6 +515,72 @@ function freePort() {
     check(taps.blocked, "the menu blocks and shows Unblock");
     check(taps.menuClosed, "the menu closes");
     check(taps.editor, "tapping your own robot opens the message editor");
+
+    // --- How to Play slideshow: slides, arrows, keys, pictures, markers, the random banked amount ---
+    const how = await a.evaluate(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const out = {};
+        openPause();
+        $("pauseHowBtn").click();
+        await wait(400);                                   // the marker positions load
+        const title = () => document.querySelector("#slide .stitle").textContent;
+        const shown = (id) => !document.getElementById(id).classList.contains("hidden");
+        out.opens = !howtoEl.classList.contains("hidden") && SLIDES.length >= 10;
+        out.first = title() === "You are a GemBot. Your goal is to collect gems." && $("slideCount").textContent.startsWith("1 /");
+        out.firstArrows = shown("slideNext") && !shown("slidePrev");
+        out.firstPicture = !!document.querySelector("#slide img") && document.querySelectorAll("#slide .mk").length >= 2;
+        $("slideNext").click();
+        out.second = title() === "Bring gems to the base to score points." && shown("slidePrev") && shown("slideNext");
+        const amount = document.querySelector("#slide .floatamt").textContent;
+        out.randomAmount = /^\+\d+$/.test(amount) && +amount.slice(1) >= 30 && +amount.slice(1) <= 100;
+        const seen = new Set();
+        for (let i = 0; i < 12; i++) { await wait(2700); seen.add(document.querySelector("#slide .floatamt").textContent); if (seen.size > 1) break; }
+        out.amountChanges = seen.size > 1;
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+        out.third = document.querySelector("#slide .steerbox") !== null && document.querySelectorAll("#slide .steerbox").length === 2
+            && /Keyboard/.test(howtoSlideEl.textContent) && /Phone/.test(howtoSlideEl.textContent);
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+        out.backOne = title().startsWith("Bring gems");
+        // every slide renders, every picture loads, and every marker landed on its picture
+        let broken = [], noMarks = [];
+        for (let i = 0; i < SLIDES.length; i++) {
+            goSlide(i);
+            for (const img of howtoSlideEl.querySelectorAll("img")) {
+                if (!img.complete) await new Promise((r) => { img.onload = img.onerror = r; });
+                if (!img.naturalWidth) broken.push(img.getAttribute("src"));
+            }
+            const wanted = SLIDES[i].imgs ? SLIDES[i].imgs.reduce((n, im) => n + im.marks.length, 0) : 0;
+            const got = howtoSlideEl.querySelectorAll(".mk").length;
+            if (got < wanted * 0.6) noMarks.push(`${i + 1}:${got}/${wanted}`);     // a few may sit off-screen in a picture
+        }
+        out.picturesLoad = broken.length === 0;
+        out.broken = broken.join(",");
+        out.markersPlaced = noMarks.length === 0;
+        out.noMarks = noMarks.join(",");
+        out.lastSlide = !shown("slideNext") && shown("slidePrev") && $("slideCount").textContent.startsWith(`${SLIDES.length} /`);
+        $("slideDots").querySelectorAll("button")[0].click();
+        out.dots = title().startsWith("You are a GemBot");
+        $("backBtn").click();
+        out.backToPause = howtoEl.classList.contains("hidden") && !pauseEl.classList.contains("hidden");
+        $("resumeBtn").click();
+        return out;
+    });
+    for (const [k, what] of [
+        ["opens", "How to Play opens a slideshow"],
+        ["first", "slide 1 is 'You are a GemBot. Your goal is to collect gems.'"],
+        ["firstArrows", "slide 1 has only the right arrow"],
+        ["firstPicture", "slide 1 has a picture with blinking markers"],
+        ["second", "the right arrow leads to slide 2 about banking, with both arrows"],
+        ["randomAmount", "slide 2 floats a random 30-100 amount"],
+        ["amountChanges", "the amount changes each time it floats up"],
+        ["third", "slide 3 shows the steering for keyboard and phone"],
+        ["backOne", "the left arrow key goes back a slide"],
+        ["picturesLoad", `every slide picture loads ${how.broken || ""}`],
+        ["markersPlaced", `every picture gets its markers ${how.noMarks || ""}`],
+        ["lastSlide", "the last slide has only the left arrow"],
+        ["dots", "the dots jump to a slide"],
+        ["backToPause", "Back returns to where How to Play was opened"],
+    ]) check(how[k] === true, what);
 
     // --- Status + leave ---
     const status = await (await fetch(`http://localhost:${PORT}/api/status`)).json();

@@ -3,7 +3,7 @@
 import math
 
 from app.grid import World
-from app.player import STEER, TICK, Player
+from app.player import MAX_SPEED, STEER_FAST, STEER_SLOW, TICK, Player, turn_rate
 
 
 class Open(World):
@@ -23,11 +23,11 @@ def test_the_turn_rate_builds_up_gradually() -> None:
     p.set_controls(False, False, False, True)
     p.step(world)
     first = p.spin
-    assert 0 < first < STEER * 0.5  # not instantly at full rate
+    assert 0 < first < turn_rate(8.0) * 0.5  # not instantly at full rate
     for _ in range(40):
         p.step(world)
     assert p.spin > first
-    assert p.spin <= STEER + 1e-9
+    assert p.spin <= STEER_SLOW + 1e-9
     assert p.heading > 0  # right turns clockwise
 
 
@@ -68,3 +68,30 @@ def test_the_about_face_still_turns_exactly_half_a_circle() -> None:
     for _ in range(int(1 / TICK)):
         p.step(world)
     assert math.isclose(p.heading - start, math.pi)
+
+
+def test_the_turn_rate_falls_with_speed() -> None:
+    assert turn_rate(0.0) == STEER_SLOW and turn_rate(MAX_SPEED) == STEER_FAST
+    assert turn_rate(2.0) > turn_rate(8.0) > turn_rate(14.0)
+    assert turn_rate(10 * MAX_SPEED) == STEER_FAST  # never extrapolates past top speed
+    assert STEER_FAST < STEER_SLOW
+
+
+def test_a_fast_robot_turns_wider_than_a_slow_one() -> None:
+    def radius(speed: float) -> float:
+        p, world = robot()
+        p.set_controls(False, False, False, True)
+        for _ in range(60):  # let the turn rate build up first (speed held constant)
+            p.speed = speed
+            p.step(world)
+        before = p.heading
+        for _ in range(40):
+            p.speed = speed
+            p.step(world)
+        return speed / (
+            (p.heading - before) / (40 * TICK)
+        )  # radius = speed / turn rate
+
+    assert radius(3.0) < 1.5  # a crawl turns on a coin
+    assert 7 < radius(14.0) < 11  # top speed needs room
+    assert radius(14.0) > 4 * radius(3.0)

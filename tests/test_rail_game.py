@@ -97,7 +97,11 @@ def test_placing_a_hub_offers_nearby_hubs_and_builds_hub_and_track_together() ->
     game.build_hub("ann", a, 20, 6, pay_score=True)
     new = game.rail.hubs[max(game.rail.hubs)]
     assert (new.x, new.y, new.out, new.builder) == (20, 6, a, "ann")
-    assert ann.score == before - (HUB_COST + 8) and notes(ann, "built")
+    assert ann.score == before - (HUB_COST + 8)
+    assert notes(ann, "built")[-1] == {
+        "t": "built",
+        "v": HUB_COST + 8,
+    }  # the client floats "-33"
 
 
 def test_a_hub_is_never_built_without_a_track() -> None:

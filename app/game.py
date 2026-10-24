@@ -501,7 +501,7 @@ class Game:
         player.spent += short
         self.rail.apply(q, pid)
         self._say(player, True, f"Hub built (-{q.cost})")
-        player.notices.append({"t": "built"})
+        player.notices.append({"t": "built", "v": q.cost})
 
     def build_track(self, pid: str, x: int, y: int, confirm: bool) -> None:
         """Lay a track from the hub under the player to ``(x, y)`` (preview, then confirm)."""
@@ -522,7 +522,7 @@ class Game:
             player.spent += short
             self.rail.apply(q, pid)
             self._say(player, True, f"Built (-{q.cost})")
-            player.notices.append({"t": "built"})
+            player.notices.append({"t": "built", "v": q.cost})
 
     def _pay_tolls(
         self,
