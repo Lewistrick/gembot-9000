@@ -6,6 +6,7 @@ import random
 import pytest
 
 from app.game import (
+    CARGO_MAX,
     CHAT_MAX,
     DISCONNECT_GRACE,
     IDLE_CROWD,
@@ -257,6 +258,32 @@ def test_mining_adds_cargo_once_and_gems_never_return(game: Game) -> None:
     game.tick()
     assert a.cargo == value  # standing on it again gives nothing
     assert game.mined_log == [(x, y)]
+
+
+def test_a_full_cargo_hold_leaves_the_gem_where_it_is(
+    game: Game, clock: FakeClock
+) -> None:
+    x, y, value = far_gem(game)
+    a = game.join("a", "A")
+    assert a is not None
+    a.cargo = CARGO_MAX - value + 1  # one short of room
+    a.place(x, y)
+    a.notices.clear()
+    game.tick()
+    assert (
+        a.cargo == CARGO_MAX - value + 1 and (x, y) not in game.mined
+    )  # still there for others
+    assert [n for n in a.notices if n["t"] == "cargofull"] == [
+        {"t": "cargofull", "max": CARGO_MAX}
+    ]
+    game.tick()
+    assert len([n for n in a.notices if n["t"] == "cargofull"]) == 1  # not every tick
+    clock.t += 11
+    game.tick()
+    assert len([n for n in a.notices if n["t"] == "cargofull"]) == 2
+    a.cargo = CARGO_MAX - value  # exactly enough room
+    game.tick()
+    assert a.cargo == CARGO_MAX and (x, y) in game.mined
 
 
 def test_cargo_only_scores_when_delivered_to_the_base(game: Game) -> None:

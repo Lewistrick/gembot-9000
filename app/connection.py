@@ -27,7 +27,16 @@ import base64
 import json
 import math
 
-from .game import LIGHT_DARK, LIGHT_DIM, LIGHT_LOST, LIGHT_WARN, MAX_PLAYERS, Game, Row
+from .game import (
+    CARGO_MAX,
+    LIGHT_DARK,
+    LIGHT_DIM,
+    LIGHT_LOST,
+    LIGHT_WARN,
+    MAX_PLAYERS,
+    Game,
+    Row,
+)
 from .grid import BASE_RADIUS, CHUNK
 from .player import MAX_SPEED, TICK, Player, hue_for
 from .rail import HUB_COST, MAX_TRACK
@@ -93,6 +102,7 @@ class Connection:
             "chunk": CHUNK,
             "cap": MAX_PLAYERS,
             "hub_cost": HUB_COST,
+            "cargo_max": CARGO_MAX,
             "max_track": MAX_TRACK,
             "tick_ms": int(TICK * 1000),
             "max_speed": MAX_SPEED,

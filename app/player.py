@@ -118,6 +118,7 @@ class Player:
     since_wall: int = 1_000_000  # ticks since the robot last touched a wall
     follow: str | None = None  # pid of the player followed (an arrow points there)
     inactive: bool = False  # no input for a while: others can't follow this one
+    full_told: float = -1e9  # clock time of the last "cargo full" notice
 
     @property
     def score(self) -> int:

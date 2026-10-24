@@ -34,6 +34,7 @@ def test_welcome_describes_the_world() -> None:
     )  # the client prices hubs with these
     assert w["light"] == [100.0, 250.0, 350.0]  # the client darkens by these
     assert w["light_warn"] == 150.0  # ...and warns gently from here
+    assert w["cargo_max"] == 500
     assert w["you"]["id"] == "a" and w["you"]["hue"] == hue_for(1)
 
 

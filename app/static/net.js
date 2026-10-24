@@ -13,7 +13,7 @@ const G = {
     state: "menu",             // menu | joining | playing | kicked | full
     connected: false,
     me: null,                  // { id, num, name, hue }
-    day: "", cap: 100, tickMs: 50, maxSpeed: 15, baseR: 10, hubCost: 25, maxTrack: 60,
+    day: "", cap: 100, tickMs: 50, maxSpeed: 15, baseR: 10, hubCost: 25, maxTrack: 60, cargoMax: 500,
     colors: null,              // base palette from welcome
     pal: null,                 // palette drifted by distance (from board messages)
     x: 0, y: 0, h: 0, speed: 0,
@@ -181,6 +181,7 @@ const HANDLERS = {
     welcome(m) {
         G.me = m.you; G.day = m.day; G.cap = m.cap; G.tickMs = m.tick_ms;
         G.hubCost = m.hub_cost; G.maxTrack = m.max_track;
+        if (m.cargo_max) G.cargoMax = m.cargo_max;
         if (m.light) G.light = m.light;
         if (m.light_warn) G.lightWarn = m.light_warn;
         G.maxSpeed = m.max_speed; G.baseR = m.base; G.colors = m.colors; G.mult = m.mult;
@@ -260,6 +261,7 @@ const HANDLERS = {
         G.floats.push({ v: m.v, t0: performance.now(), gem: true, mega: !!m.mega });   // a gem icon and the amount rise from the robot
         if (G.floats.length > 6) G.floats.shift();
     },
+    cargofull(m) { toast(`Cargo full (${m.max}): bank it at the base or ship it from a hub.`, "#ff6b5e", 3500); },
     following(m) {                          // the server's answer to following someone (or the end of it)
         const was = G.follow;
         if (m.id) {

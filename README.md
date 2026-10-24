@@ -32,9 +32,10 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 
 ## The rules
 
-- **Gems.** Drive over one to mine it (a gem icon and its value float up from your robot); it goes into your **cargo** (unlimited) and is gone for
-  *everyone* for the rest of the day. They sit in rock faces, just as common everywhere but **richer** with
-  distance from the base (`value × (1 + distance/150)`), and ten rare **mega gems** (250 each)
+- **Gems.** Drive over one to mine it (a gem icon and its value float up from your robot); it goes into your **cargo** (at most **500**: a full robot leaves gems where they are, so bank or ship
+  it) and is gone for
+  *everyone* for the rest of the day. They sit in rock faces: common within 250 tiles of the base, **sparse** beyond (about one per
+  150×150 tiles, mostly 100-200 tiles apart), and **richer** with distance from the base (`value × (1 + distance/150)`), and ten rare **mega gems** (250 each)
   hide 60–400 tiles out; they glow amber on the minimap (which also draws hubs, rails and the base) and mining one is announced.
 - **Score.** Cargo only scores once **delivered to the base**: drive into the dashed ring
   around the depot, ride in, or ship it. Undelivered cargo is lost at midnight. Banking (driving in or by rail) floats the amount (`+57`)

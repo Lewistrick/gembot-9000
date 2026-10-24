@@ -486,6 +486,11 @@ function freePort() {
         await new Promise((r) => setTimeout(r, 800));
         await frames(2);
         out.popupGone = G.crashes.length === 0;
+        // A full cargo hold says so.
+        G.toasts.length = 0;
+        HANDLERS.cargofull({ max: 500 });
+        out.fullToast = G.cargoMax === 500 && G.toasts.some((t) => t.text.startsWith("Cargo full (500)"));
+        G.cargo = 500; await frames(3); G.cargo = 0;          // the pane shows FULL without errors
         // A gem found in a drilled rock says so.
         G.toasts.length = 0;
         HANDLERS.gain({ v: 31, mega: false, rock: true });
@@ -519,6 +524,7 @@ function freePort() {
         ["crashChips", "a crash scatters gem pebbles and shows a pop-up"],
         ["chipsGone", "the pebbles disappear quickly"],
         ["popupGone", "the pop-up goes away too"],
+        ["fullToast", "a full cargo hold (500) says so"],
         ["rockGem", "a gem found in a drilled rock says so and floats up"],
         ["mineFloat", "mining a gem floats a gem icon with the amount"],
         ["megaFloat", "a mega gem floats too"],
