@@ -156,3 +156,13 @@ def test_rail_build_netmap_and_ride_over_the_wire(client: TestClient) -> None:
         assert riding
     finally:
         ws.__exit__(None, None, None)
+
+
+def test_the_page_names_its_files_with_a_fingerprint(client: TestClient) -> None:
+    r = client.get("/")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+    v = r.text.split('name="asset-v" content="')[1].split('"')[0]
+    assert len(v) == 10
+    for name in ("style.css", "util.js", "howto.js", "ui.js"):
+        assert f"static/{name}?v={v}" in r.text
+    assert client.get(f"/static/style.css?v={v}").status_code == 200

@@ -590,6 +590,45 @@ function freePort() {
     const after = await (await fetch(`http://localhost:${PORT}/api/status`)).json();
     check(after.online === 1, `leaving frees the slot (online=${after.online})`);
 
+    // --- How to Play on phones: arrows at the sides, nothing wider than the screen, slides fit ---
+    for (const [label, vp] of [["phone upright", { width: 390, height: 664 }], ["phone on its side", { width: 750, height: 342 }], ["small phone", { width: 320, height: 480 }]]) {
+        const ctxP = await browser.newContext({ viewport: vp, hasTouch: true, isMobile: true });
+        const p = await ctxP.newPage();
+        watch(p, label);
+        await p.goto(`http://localhost:${PORT}/`);
+        p.versioned = await p.evaluate(() => [...document.scripts].every((s) => /\?v=\w{10}$/.test(s.src))
+            && /\?v=\w{10}$/.test(document.querySelector("link[rel=stylesheet]").href));
+        await p.click("#howBtn");
+        await p.waitForFunction(() => typeof howtoShots !== "undefined" && howtoShots, null, { timeout: 5000 });
+        const lay = await p.evaluate(async () => {
+            const res = { sides: true, wide: 0, overflow: [], hint: true };
+            for (let i = 0; i < SLIDES.length; i++) {
+                goSlide(i);
+                for (const img of howtoSlideEl.querySelectorAll("img")) if (!img.complete) await new Promise((r) => { img.onload = img.onerror = r; });
+                await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+                const sl = howtoSlideEl.getBoundingClientRect(), n = $("slideNext").getBoundingClientRect(), pv = $("slidePrev").getBoundingClientRect();
+                if (i > 0 && !(pv.width && pv.right <= sl.left + 1 && pv.left <= 8)) res.sides = false;
+                if (i < SLIDES.length - 1 && !(n.width && n.left >= sl.right - 1 && n.right >= innerWidth - 8)) res.sides = false;
+                for (const e of document.querySelectorAll("#howto *")) { const b = e.getBoundingClientRect(); if (b.width && (b.right > innerWidth + 1 || b.left < -1)) res.wide++; }
+                const over = howtoSlideEl.scrollHeight - howtoSlideEl.clientHeight;
+                if (over > 6) {
+                    res.overflow.push(i + 1);
+                    if (!howtoSlideEl.classList.contains("more")) res.hint = false;   // a slide that doesn't fit says so
+                }
+            }
+            const back = $("backBtn").getBoundingClientRect();
+            res.backVisible = back.bottom <= innerHeight && back.top >= 0;
+            return res;
+        });
+        check(p.versioned, `${label}: scripts and styles are loaded with a version, so phones never mix in stale files`);
+        check(lay.sides, `${label}: the slide arrows sit on the left and right of the screen, beside the slide`);
+        check(lay.wide === 0, `${label}: nothing on the slides is wider than the screen`);
+        check(lay.backVisible, `${label}: the Back button is on screen`);
+        check(lay.hint, `${label}: a slide that doesn't fit shows a 'more below' hint`);
+        if (label !== "small phone") check(lay.overflow.length === 0, `${label}: every slide fits on the screen${lay.overflow.length ? " (not: " + lay.overflow.join(",") + ")" : ""}`);
+        await ctxP.close();
+    }
+
     check(errors.length === 0, `no JavaScript errors${errors.length ? ": " + errors.join(" | ") : ""}`);
     check(!/Traceback/.test(serverLog), "no server tracebacks");
     if (/Traceback/.test(serverLog)) console.log(serverLog.slice(-1500));

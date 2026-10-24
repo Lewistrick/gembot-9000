@@ -88,6 +88,10 @@ const SLIDES = [
 
 const ARROW_SVG = '<svg viewBox="0 0 56 56" aria-hidden="true"><path d="M20 3h16v25h14L28 53 6 28h14z" fill="#ffcf4d" stroke="#05080a" stroke-width="3" stroke-linejoin="round"/></svg>';
 
+// The same fingerprint as on the scripts (see app/server.py), so new pictures replace cached ones.
+const ASSET_V = (document.querySelector('meta[name="asset-v"]') || {}).content || "";
+const assetUrl = (p) => (ASSET_V ? `${p}?v=${ASSET_V}` : p);
+
 const howtoSlideEl = document.getElementById("slide"), howtoDotsEl = document.getElementById("slideDots");
 const howtoPrev = document.getElementById("slidePrev"), howtoNext = document.getElementById("slideNext");
 let howtoIndex = 0, howtoShots = null, howtoFloat = null;
@@ -168,26 +172,36 @@ function shotHtml(img) {
         const [x, y, rw] = info.marks.robot;
         extra = `<b class="floatamt" style="left:${((x + rw / 2) / w * 100).toFixed(2)}%;top:${((y - 34) / h * 100).toFixed(2)}%"></b>`;
     }
-    return `<figure class="shot"><img src="static/howto/${img.shot}.jpg" alt="" draggable="false" />${marks}${extra}</figure>`;
+    return `<figure class="shot"><img src="${assetUrl(`static/howto/${img.shot}.jpg`)}" alt="" draggable="false" />${marks}${extra}</figure>`;
 }
 
 function renderSlide() {
     const s = SLIDES[howtoIndex];
-    let html = `<h3 class="stitle">${s.title}</h3>`;
-    if (s.custom === "steering") html += steeringSlide();
-    else if (s.custom === "keys") html += keysSlide();
+    let body;
+    if (s.custom === "steering") body = steeringSlide();
+    else if (s.custom === "keys") body = keysSlide();
     else {
-        html += `<div class="shots n${s.imgs.length}">${s.imgs.map(shotHtml).join("")}</div>`;
-        html += `<ul class="slines">${s.lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
+        body = `<div class="shots n${s.imgs.length}">${s.imgs.map(shotHtml).join("")}</div>`
+            + `<ul class="slines">${s.lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
     }
-    howtoSlideEl.innerHTML = html;
+    howtoSlideEl.innerHTML = `<h3 class="stitle">${s.title}</h3><div class="sbody ${s.custom ? "custom" : `n${s.imgs.length}`}">${body}</div>`;
     howtoSlideEl.scrollTop = 0;
+    markOverflow();
+    for (const img of howtoSlideEl.querySelectorAll("img")) img.addEventListener("load", markOverflow, { once: true });
     howtoPrev.classList.toggle("hidden", howtoIndex === 0);
     howtoNext.classList.toggle("hidden", howtoIndex === SLIDES.length - 1);
     document.getElementById("slideCount").textContent = `${howtoIndex + 1} / ${SLIDES.length}`;
     howtoDotsEl.querySelectorAll("button").forEach((d, i) => d.classList.toggle("on", i === howtoIndex));
     startFloatAmount();
 }
+
+// A slide taller than the screen gets a "more below" hint at the bottom until it is scrolled down.
+function markOverflow() {
+    const el = howtoSlideEl;
+    el.classList.toggle("more", el.scrollHeight - el.clientHeight - el.scrollTop > 6);
+}
+howtoSlideEl.addEventListener("scroll", markOverflow, { passive: true });
+window.addEventListener("resize", () => { if (!document.getElementById("howto").classList.contains("hidden")) markOverflow(); });
 
 // The "+amount" over the robot on the banking slide: a random 30-100 each time it floats up.
 function startFloatAmount() {
@@ -220,7 +234,7 @@ function startHowto() {
     howtoIndex = 0;
     renderSlide();
     if (!howtoShots) {                                    // marker positions; the slides work without them
-        fetch("static/howto/shots.json").then((r) => r.json()).then((j) => { howtoShots = j; renderSlide(); }).catch(() => { /* no markers */ });
+        fetch(assetUrl("static/howto/shots.json")).then((r) => r.json()).then((j) => { howtoShots = j; renderSlide(); }).catch(() => { /* no markers */ });
     }
 }
 
