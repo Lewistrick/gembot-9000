@@ -8,6 +8,7 @@ import pytest
 from app.game import (
     CHAT_MAX,
     DISCONNECT_GRACE,
+    IDLE_CROWD,
     IDLE_KICK,
     IDLE_WARN,
     LIGHT_EVERY,
@@ -37,6 +38,21 @@ def clock() -> FakeClock:
 @pytest.fixture
 def game(clock: FakeClock) -> Game:
     return Game("2026-10-22", clock=clock, rng=random.Random(7))
+
+
+def crowd(game: Game) -> list[str]:
+    """Fill the mine past IDLE_CROWD with busy players, so the idle rule applies."""
+    pids = [f"busy{i}" for i in range(IDLE_CROWD)]
+    for pid in pids:
+        assert game.join(pid, pid) is not None
+    return pids
+
+
+def busy_tick(game: Game, pids: list[str]) -> None:
+    """A tick in which the crowd has just given input (only the others are idle)."""
+    for pid in pids:
+        game.touch(pid)
+    game.tick()
 
 
 def far_gem(game: Game) -> tuple[int, int, int]:
@@ -91,8 +107,9 @@ def test_duplicate_name_gets_numbered_suffix(game: Game) -> None:
 def test_name_stays_reserved_while_owner_is_away(game: Game, clock: FakeClock) -> None:
     owner = game.join("owner", "Kobold")
     assert owner is not None
+    busy = crowd(game)
     clock.t += IDLE_KICK + 1
-    game.tick()  # idle kick removes the owner from the world
+    busy_tick(game, busy)  # the idle kick removes the owner from the world
     assert not owner.in_world
     thief = game.join("thief", "Kobold")
     assert thief is not None and thief.name == "Kobold#2"
@@ -126,24 +143,80 @@ def test_rejoin_with_new_name_releases_the_old_one(game: Game) -> None:
 def test_idle_warning_then_kick(game: Game, clock: FakeClock) -> None:
     p = game.join("a", "Ann")
     assert p is not None
+    busy = crowd(game)
     p.notices.clear()
     clock.t += IDLE_WARN + 1
-    game.tick()
+    busy_tick(game, busy)
     assert p.in_world
     assert [n["t"] for n in p.notices] == ["warn"]
     clock.t += IDLE_KICK - IDLE_WARN
-    game.tick()
+    busy_tick(game, busy)
     assert not p.in_world
     assert p.notices[-1] == {"t": "kicked", "why": "idle"}
+
+
+def test_nobody_is_removed_for_idling_with_ten_or_fewer_in_the_mine(
+    game: Game, clock: FakeClock
+) -> None:
+    p = game.join("a", "Ann")
+    assert p is not None
+    busy = crowd(game)[:-1]  # Ann and nine others: ten in the mine
+    game.quit(f"busy{IDLE_CROWD - 1}")
+    assert game.online_count() == IDLE_CROWD
+    p.notices.clear()
+    clock.t += 3 * IDLE_KICK
+    busy_tick(game, busy)
+    assert p.in_world and not p.notices  # not even a warning
+
+
+def test_when_the_mine_fills_up_a_long_idle_player_is_warned_first(
+    game: Game, clock: FakeClock
+) -> None:
+    p = game.join("a", "Ann")
+    assert p is not None
+    busy = crowd(game)[:-1]
+    game.quit(f"busy{IDLE_CROWD - 1}")
+    clock.t += 3 * IDLE_KICK  # idle for half an hour while there was room
+    busy_tick(game, busy)
+    late = game.join("late", "Late")  # the eleventh player
+    assert late is not None
+    p.notices.clear()
+    busy_tick(game, [*busy, "late"])
+    assert p.in_world and [n["t"] for n in p.notices] == ["warn"]
+    assert p.notices[0]["left"] == int(
+        IDLE_KICK - IDLE_WARN
+    )  # a full minute to respond
+    clock.t += IDLE_KICK - IDLE_WARN
+    busy_tick(game, [*busy, "late"])
+    assert not p.in_world
+
+
+def test_a_warning_is_withdrawn_when_the_mine_empties_again(
+    game: Game, clock: FakeClock
+) -> None:
+    p = game.join("a", "Ann")
+    assert p is not None
+    busy = crowd(game)
+    clock.t += IDLE_WARN + 1
+    busy_tick(game, busy)
+    assert p.warned
+    game.quit(busy.pop())  # back to ten
+    p.notices.clear()
+    busy_tick(game, busy)
+    assert p.notices == [{"t": "warn", "left": 0, "why": "idle"}] and not p.warned
+    clock.t += IDLE_KICK
+    busy_tick(game, busy)
+    assert p.in_world
 
 
 def test_input_resets_the_idle_timer(game: Game, clock: FakeClock) -> None:
     p = game.join("a", "Ann")
     assert p is not None
+    busy = crowd(game)
     clock.t += IDLE_KICK - 5
     game.control("a", True, False, False, False)
     clock.t += IDLE_KICK - 5
-    game.tick()
+    busy_tick(game, busy)
     assert p.in_world  # 595 s since the last input: warned, not kicked
 
 

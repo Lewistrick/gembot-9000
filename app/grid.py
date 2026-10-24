@@ -498,6 +498,16 @@ class Chunk:
         self.gems: dict[tuple[int, int], int] | None = None  # world (x, y) -> value
 
 
+def rock_gem_value(base_roll: float, x: int, y: int) -> int:
+    """Value of a gem found inside a drilled rock at ``(x, y)``.
+
+    Valued like the gems lying in the mine at that distance: a base of
+    10-40 (picked by ``base_roll`` in [0, 1)) times ``1 + distance/150``."""
+    span = _GEM_VALUE_MAX - _GEM_VALUE_MIN + 1
+    base = _GEM_VALUE_MIN + min(span - 1, int(base_roll * span))
+    return round(base * (1.0 + math.hypot(x, y) / _GEM_VALUE_DIST))
+
+
 class World:
     """A single infinite world for one seed with a thread-safe LRU chunk cache.
 

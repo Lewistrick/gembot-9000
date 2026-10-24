@@ -17,7 +17,7 @@ from datetime import time as dtime
 from typing import Self
 from zoneinfo import ZoneInfo
 
-from .grid import BASE_RADIUS, DEFAULT_STYLE, World
+from .grid import BASE_RADIUS, DEFAULT_STYLE, World, rock_gem_value
 from .player import DRILL_COST, TICK, Player, Ride
 from .rail import CART_SPEED, RIDE_SPEED, Hub, Network, Quote, advance
 
@@ -27,6 +27,10 @@ CHAT_MAX = 60
 CHAT_COOLDOWN = 1.0  # seconds between chat changes per player
 IDLE_WARN = 9 * 60.0  # idle seconds before the "still there?" warning
 IDLE_KICK = 10 * 60.0  # idle seconds before the player is removed
+IDLE_CROWD = 10  # idle players are removed only while more than this many are in
+DRILL_GEM_CHANCE = (
+    0.01  # chance that a drilled rock tile holds a gem (valued by distance)
+)
 DISCONNECT_GRACE = 15.0  # seconds a dropped robot lingers before leaving the world
 BOARD_EVERY = 40  # ticks between leaderboard refreshes (2 s at 20 Hz)
 RUSH_START = 23 * 60  # minute of the day when gems become worth double
@@ -290,6 +294,7 @@ class Game:
     def tick(self) -> None:
         now = self.clock()
         self.tick_count += 1
+        crowded = self.online_count() > IDLE_CROWD
         for player in list(self.players.values()):
             if not player.in_world:
                 continue
@@ -297,6 +302,13 @@ class Game:
                 if now - (player.disconnected_at or now) >= DISCONNECT_GRACE:
                     self._remove(player)
                     continue
+            elif not crowded:
+                # Room for everyone: nobody is removed for idling. The idle clock waits at
+                # the warning, so once the mine fills up a long-idle player is warned first.
+                player.last_input = max(player.last_input, now - IDLE_WARN)
+                if player.warned:  # a warning that no longer applies
+                    player.warned = False
+                    player.notices.append({"t": "warn", "left": 0, "why": "idle"})
             else:
                 idle = now - player.last_input
                 if idle >= IDLE_KICK:
@@ -340,6 +352,12 @@ class Game:
             player.cargo -= DRILL_COST
         self.drilled.add(cell)
         self.drilled_log.append(cell)
+        if self.rng.random() < DRILL_GEM_CHANCE:  # now and then the rock hides a gem
+            value = rock_gem_value(self.rng.random(), *cell) * self.multiplier
+            player.cargo += value
+            player.notices.append(
+                {"t": "gain", "v": value, "mega": False, "rock": True}
+            )
 
     def _pickup(self, player: Player) -> None:
         cell = (round(player.x), round(player.y))
