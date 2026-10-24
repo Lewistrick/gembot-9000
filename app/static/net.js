@@ -44,6 +44,8 @@ let camFrom = { x: 0, y: 0, h: 0 }, camTo = { x: 0, y: 0, h: 0 };
 let segStart = 0, segDur = 50, haveCam = false;
 let camH = 0, camHAt = 0;      // eased camera heading: the map follows the robot's turn with a little lag
 const CAM_EASE_MS = 130;       // how quickly the camera catches up with the robot's heading
+const CAM_EASE_RIDE_MS = 650;  // ...while riding the rails (and just after): a slow, lazy swing
+let rodeAt = -1e9;             // performance.now() of the last frame spent riding
 
 // Stable per-browser token so a reconnect resumes the same robot and score.
 let token = null;
@@ -97,11 +99,15 @@ function robotPose() {
     };
 }
 
-// Call once per frame: eases the camera heading toward the robot's (snapping after a jump).
+// Call once per frame: eases the camera heading toward the robot's, the short way round.
+// The easing is exponential, so a big difference swings fast and a small one slowly.
 function easeCamHeading(now) {
     const rh = robotPose().h, dt = Math.min(100, now - camHAt);
     camHAt = now;
-    camH = Math.abs(rh - camH) > Math.PI ? rh : camH + (rh - camH) * (1 - Math.exp(-dt / CAM_EASE_MS));
+    if (G.riding) rodeAt = now;
+    const tau = now - rodeAt < 1500 ? CAM_EASE_RIDE_MS : CAM_EASE_MS;
+    const d = ((rh - camH + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    camH += d * (1 - Math.exp(-dt / tau));
 }
 
 // What to draw from: the robot's position, the eased map heading ``h`` and the robot's true heading ``rh``.

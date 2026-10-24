@@ -432,6 +432,36 @@ function freePort() {
         ["labelNoScore", "the box never mentions paying from score"],
     ]) check(bank[k] === true, what);
 
+    // --- Camera: follows the robot the short way round, and lazily while riding ---
+    const camTest = await a.evaluate(async () => {
+        const realTick = HANDLERS.tick, saved = { from: camFrom, to: camTo, h: camH, riding: G.riding };
+        HANDLERS.tick = () => {};
+        const out = {};
+        try {
+            const p = robotPose(), at = (h) => { camFrom = camTo = { x: p.x, y: p.y, h }; };
+            const settleFrom = async (start, target, riding, ms) => {
+                G.riding = riding; rodeAt = riding ? performance.now() : -1e9;
+                at(target); camH = start; camHAt = performance.now();
+                await new Promise((r) => setTimeout(r, ms));
+                return camH;
+            };
+            const h1 = await settleFrom(0, Math.PI * 2 - 0.4, false, 150);   // 0.4 rad to the left, written as almost a full turn
+            out.shortWay = h1 < 0 && h1 > -0.41;
+            const driving = await settleFrom(0, 1.0, false, 200), riding = await settleFrom(0, 1.0, true, 200);
+            out.slowWhileRiding = riding > 0.05 && riding < driving * 0.75;
+            const big = await settleFrom(0, 1.6, true, 150), small = await settleFrom(0, 0.2, true, 150);
+            out.fasterWhenFarOff = big > small * 4;
+        } finally {
+            HANDLERS.tick = realTick; camFrom = saved.from; camTo = saved.to; camH = saved.h; G.riding = saved.riding; rodeAt = -1e9;
+        }
+        return out;
+    });
+    for (const [k, what] of [
+        ["shortWay", "the camera turns the short way round"],
+        ["slowWhileRiding", "the camera swings slower while riding"],
+        ["fasterWhenFarOff", "the camera turns faster when it is far off"],
+    ]) check(camTest[k] === true, what);
+
     // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---
     const light = await a.evaluate(async () => {
         const frames = (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });

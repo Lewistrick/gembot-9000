@@ -1,5 +1,6 @@
 """Rail in play: building, tolls, riding, carts, and what other clients are sent."""
 
+import math
 import random
 
 from app.connection import Connection
@@ -348,3 +349,72 @@ def test_base_hub_is_never_stored(tmp_path) -> None:
     store = Store(str(tmp_path / "x.db"))
     assert store.snapshot(game)["hubs"] == {}
     store.close()
+
+
+# -- the robot turns with the track while riding ------------------------- #
+def wrap(a: float) -> float:
+    return (a + math.pi) % math.tau - math.pi
+
+
+def test_a_ride_turns_the_robot_gradually_to_face_the_way_it_travels() -> None:
+    game, (ann,) = make("Ann")
+    ann.place(0, 0)
+    a = lay(game, ann, 0, 20)  # straight "down" from the base (heading pi)
+    game.tick()
+    ann.place(0, 0)
+    ann.heading = 0.0  # facing up: the track below is a half turn away
+    game.ride("ann", a)
+    assert (
+        ann.ride is not None and ann.heading == 0.0
+    )  # boarding doesn't snap the robot round
+    seen = []
+    while ann.ride is not None:
+        game.tick()
+        seen.append(ann.heading)
+    steps = [abs(b - a_) for a_, b in zip([0.0, *seen], seen, strict=False)]
+    assert (
+        max(steps) < 0.45
+    )  # never a sudden swing (the old turn could jump 0.3 rad every tick)
+    assert steps[0] < steps[len(steps) // 2]  # eases in: slow at first, fastest midway
+    assert (
+        abs(wrap(ann.heading - math.pi)) < 1e-6
+    )  # faces the way it travelled on arrival
+
+
+def test_a_small_turn_swings_slower_than_a_big_one() -> None:
+    def biggest_step(target: tuple[int, int], start_heading: float) -> float:
+        game, (ann,) = make("Ann")
+        ann.place(0, 0)
+        a = lay(game, ann, *target)
+        game.tick()
+        ann.place(0, 0)
+        ann.heading = start_heading
+        game.ride("ann", a)
+        last, biggest = ann.heading, 0.0
+        while ann.ride is not None:
+            game.tick()
+            biggest, last = max(biggest, abs(ann.heading - last)), ann.heading
+        return biggest
+
+    track = (20, 0)  # due "east": heading pi/2
+    assert (
+        biggest_step(track, math.pi / 2 - 0.2)
+        < biggest_step(track, -math.pi / 2 + 0.1) / 4
+    )
+
+
+def test_a_ride_over_several_hubs_faces_the_last_stretch_at_the_end() -> None:
+    game, (ann,) = make("Ann")
+    ann.place(0, 0)
+    a = lay(game, ann, 20, 0)
+    ann.place(20, 0)
+    game.tick()
+    b = lay(game, ann, 20, -20)  # then "up"
+    game.tick()
+    ann.place(0, 0)
+    ann.heading = math.pi
+    game.ride("ann", b)
+    settle(game, 80)
+    assert ann.ride is None and (round(ann.x), round(ann.y)) == (20, -20)
+    assert abs(wrap(ann.heading - 0.0)) < 1e-6
+    assert a != b
