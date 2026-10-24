@@ -78,6 +78,10 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
   to deliver; at midnight the winner is crowned (👑 until the next midnight) and a fresh mine opens.
 - **Chat.** Type a message; it floats above your robot until you change or clear it. **Block**
   someone to hide their bubbles for you (kept in your browser).
+- **Following.** Tap another robot (or use the players list) and choose **Follow**: a black arrow
+  with a stripe in their colour then points at them wherever they are, like the lens arrows (with or
+  without the lens). You follow one player at a time; they are told. Players without input for 5
+  minutes are inactive and can't be followed, and following stops when they go inactive or leave.
 - **Names** are unique per day (a taken name becomes `Name#2`) and stay reserved for their owner
   even while away.
 - **Staying in.** While more than 10 players are in the mine, 10 minutes without input removes you

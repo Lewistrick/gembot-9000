@@ -125,6 +125,11 @@ const SLIDES = [
         lines: ["<b>Tap another robot</b> to open its menu.", "There you can <b>block</b> their chat.", "Blocking only hides bubbles for <b>you</b>."],
     },
     {
+        title: "Follow a friend.",
+        imgs: [{ shot: "chat", marks: ["other:box"] }],
+        lines: ["Tap another robot (or open the players list) and choose <b>Follow</b>.", "A <b>black arrow</b> with a stripe in their colour points at them.", "They are told. Inactive players can't be followed."],
+    },
+    {
         title: "One mine, one day.",
         imgs: [{ shot: "day", marks: ["score:box"] }],
         lines: ["A <b>new mine</b> opens every day, the same for everyone.", "Up to <b>100 players</b> dig together.", "The most <b>banked</b> gems at midnight wins."],

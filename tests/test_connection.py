@@ -97,6 +97,7 @@ def test_meta_is_sent_once_then_again_only_when_chat_changes() -> None:
             "chat": "hello",
             "hue": hue_for(2),
             "crown": False,
+            "idle": False,
         }
     ]
 
