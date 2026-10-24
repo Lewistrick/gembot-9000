@@ -472,6 +472,11 @@ function freePort() {
         await new Promise((r) => setTimeout(r, 800));
         await frames(2);
         out.popupGone = G.crashes.length === 0;
+        // A gem found in a drilled rock says so.
+        G.toasts.length = 0;
+        HANDLERS.gain({ v: 31, mega: false, rock: true });
+        out.rockGem = G.toasts.some((t) => t.text === "Found a gem in the rock! +31") && G.floats.some((f) => f.v === 31 && f.gem);
+        G.floats.length = 0;
         // Mining a gem floats a gem icon with the amount.
         G.floats.length = 0;
         HANDLERS.gain({ v: 12, mega: false });
@@ -500,6 +505,7 @@ function freePort() {
         ["crashChips", "a crash scatters gem pebbles and shows a pop-up"],
         ["chipsGone", "the pebbles disappear quickly"],
         ["popupGone", "the pop-up goes away too"],
+        ["rockGem", "a gem found in a drilled rock says so and floats up"],
         ["mineFloat", "mining a gem floats a gem icon with the amount"],
         ["megaFloat", "a mega gem floats too"],
         ["costFloat", "a finished build floats its cost as a negative amount"],

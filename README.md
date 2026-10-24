@@ -49,7 +49,8 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
   about 1 s and **1 point of cargo** per tile, or **free but 3 s per tile with no cargo**, so
   nobody is ever stuck (some days start in a sealed pocket, 3-7 drilled tiles from the open
   cave). A drilled tile is floor for **everyone** (and for tracks and hubs) for the rest of
-  the day. Releasing forward restarts the tile; the base itself can't be drilled.
+  the day. Releasing forward restarts the tile; the base itself can't be drilled. One drilled rock
+  in 100 hides a gem, valued like the gems lying at that distance (`10-40 × (1 + distance/150)`).
 - **Rails.** A hub costs **25** and a track **1 per tile** (straight, any angle, floor only,
   ≤ 60 tiles). Each hub has **one outgoing track** and any number of incoming ones, and loops
   are refused, so every linked hub has exactly one way home. Everything is shared.
@@ -79,7 +80,9 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
   someone to hide their bubbles for you (kept in your browser).
 - **Names** are unique per day (a taken name becomes `Name#2`) and stay reserved for their owner
   even while away.
-- **Staying in.** 10 minutes without input removes you from the mine (warning at 9). Your record
+- **Staying in.** While more than 10 players are in the mine, 10 minutes without input removes you
+  (warning at 9); with 10 or fewer nobody is removed for idling, and when it fills up a long-idle
+  player gets the warning first. Your record
   is kept for the day and rejoining resumes where you were. A dropped connection gets 15 s
   of grace. There is no energy and no game over; robots pass through each other.
 

@@ -37,7 +37,7 @@ const SLIDES = [
     {
         title: "Tunnels are for everyone.",
         imgs: [{ shot: "drill", marks: ["wall:box"] }],
-        lines: ["A drilled tile is open for <b>everyone</b>.", "It stays open for the rest of the day.", "The base itself can't be drilled."],
+        lines: ["A drilled tile is open for <b>everyone</b>.", "The base itself can't be drilled.", "<b>1 rock in 100</b> hides a gem."],
     },
     {
         title: "Don't crash.",
@@ -137,7 +137,7 @@ const SLIDES = [
     {
         title: "Stay active.",
         imgs: [{ shot: "idle", marks: ["banner:box"] }],
-        lines: ["No input for <b>10 minutes</b> removes you.", "You get a warning at <b>9 minutes</b>.", "Rejoin any time: score, cargo and name are <b>kept</b> for the day."],
+        lines: ["With <b>more than 10</b> in the mine, <b>10 minutes</b> without input removes you.", "You get a warning at <b>9 minutes</b>.", "Rejoin any time: score, cargo and name are <b>kept</b> for the day."],
     },
     { title: "Handy keys.", custom: "keys" },
 ];

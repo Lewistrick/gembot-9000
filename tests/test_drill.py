@@ -260,3 +260,48 @@ def test_a_sealed_base_is_only_a_few_drilled_tiles_from_the_open_cave(day: str) 
     cost, pocket, cave = _pocket_escape_cost(day)
     assert 1 <= cost <= 8, (cost, pocket, cave)
     assert cave >= 5_000  # and what lies beyond is a real cave, not another pocket
+
+
+class Rolls(random.Random):
+    """The game's random source, but returning the given rolls in order."""
+
+    def __init__(self, *rolls: float) -> None:
+        super().__init__(0)
+        self.rolls = list(rolls)
+
+    def random(self) -> float:
+        return self.rolls.pop(0)
+
+
+def test_a_drilled_rock_sometimes_holds_a_gem_valued_by_distance() -> None:
+    from app.game import DRILL_GEM_CHANCE
+    from app.grid import rock_gem_value
+
+    assert DRILL_GEM_CHANCE == 0.01
+    game, p = make(cargo=5)
+    game.rng = Rolls(0.005, 0.5)  # a find (under 1%), then the value roll
+    ticks_until_drilled(game)
+    value = rock_gem_value(0.5, 20, 0)
+    assert value == round(25 * (1 + 20 / 150))  # base 25 at 20 tiles out
+    assert p.cargo == 5 - 1 + value
+    gains = [n for n in p.notices if n["t"] == "gain"]
+    assert gains == [{"t": "gain", "v": value, "mega": False, "rock": True}]
+
+
+def test_most_drilled_rocks_hold_nothing() -> None:
+    game, p = make(cargo=5)
+    game.rng = Rolls(0.01)  # not under 1%: no gem
+    ticks_until_drilled(game)
+    assert p.cargo == 4 and not [n for n in p.notices if n["t"] == "gain"]
+
+
+def test_a_rock_gem_is_worth_more_far_out_and_double_in_rush_hour() -> None:
+    from app.grid import rock_gem_value
+
+    assert rock_gem_value(0.0, 0, 300) == 10 * 3  # base 10, three times as much 300 out
+    assert rock_gem_value(0.999, 0, 0) == 40
+    game, p = make(cargo=5)
+    game.multiplier = 2
+    game.rng = Rolls(0.0, 0.0)
+    ticks_until_drilled(game)
+    assert p.cargo == 4 + 2 * rock_gem_value(0.0, 20, 0)
