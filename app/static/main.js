@@ -194,13 +194,83 @@ function railModeSegments(mode, cam, ax, ay) {
     return segs;
 }
 
-// What a track offer says: its length in tiles ("m"), its price, and how much of it would come from score.
-function trackLabel(o) {
-    const base = `${Math.round(o.len)}m \u00b7 ${o.cost}`;
-    return o.short > 0 ? `${base} (${o.short} from score)` : base;
+// ---- Hub placement: every transparent track carries a small clickable box with its length and price ----
+const railLabelHits = [];          // { to, x, y, w, h } of the boxes drawn last frame: a tap on one picks that track
+const LABEL_GAP = 4;
+
+// Part [t0, t1] of the segment a->b (t from 0 to 1) that lies inside the rectangle, or null.
+function clipSegment(ax, ay, bx, by, x0, y0, x1, y1) {
+    let t0 = 0, t1 = 1;
+    for (const [p, q] of [[-(bx - ax), ax - x0], [bx - ax, x1 - ax], [-(by - ay), ay - y0], [by - ay, y1 - ay]]) {
+        if (p === 0) { if (q < 0) return null; continue; }
+        const t = q / p;
+        if (p < 0) { if (t > t1) return null; t0 = Math.max(t0, t); } else { if (t < t0) return null; t1 = Math.min(t1, t); }
+    }
+    return t0 <= t1 ? [t0, t1] : null;
 }
 
+const boxesOverlap = (a, b) => a.x < b.x + b.w + LABEL_GAP && b.x < a.x + a.w + LABEL_GAP && a.y < b.y + b.h + LABEL_GAP && b.y < a.y + a.h + LABEL_GAP;
+
+// Where each label goes so that none overlaps another, the robot or the instructions:
+//  1. on the part of its own track that is on screen (a label never sits off-screen),
+//  2. otherwise slid along that track away from the others,
+//  3. otherwise (tracks leaving in nearly the same direction) pushed sideways with a short leader line.
+// segs: { ax, ay, bx, by }; size: { w, h }; region: { x0, y0, x1, y1 } the box may lie in; avoid: rects.
+function layoutTrackLabels(segs, size, region, avoid) {
+    const cx0 = region.x0 + size.w / 2, cx1 = region.x1 - size.w / 2, cy0 = region.y0 + size.h / 2, cy1 = region.y1 - size.h / 2;
+    const placed = [], out = [];
+    const free = (r) => !avoid.some((o) => boxesOverlap(r, o)) && !placed.some((o) => boxesOverlap(r, o));
+    const rectAt = (x, y) => ({ x: x - size.w / 2, y: y - size.h / 2, w: size.w, h: size.h });
+    // the longest tracks first: they have the most room to slide
+    const order = segs.map((_, i) => i).sort((i, j) => Math.hypot(segs[j].bx - segs[j].ax, segs[j].by - segs[j].ay) - Math.hypot(segs[i].bx - segs[i].ax, segs[i].by - segs[i].ay));
+    const result = new Array(segs.length);
+    for (const i of order) {
+        const s = segs[i], len = Math.hypot(s.bx - s.ax, s.by - s.ay) || 1;
+        const at = (t) => [s.ax + (s.bx - s.ax) * t, s.ay + (s.by - s.ay) * t];
+        const clip = clipSegment(s.ax, s.ay, s.bx, s.by, cx0, cy0, cx1, cy1);
+        const lo = clip ? Math.max(clip[0], Math.min(clip[1], (tile * 1.9) / len)) : Math.min(1, (tile * 1.9) / len);
+        const hi = clip ? clip[1] : lo;
+        const pref = clamp(0.5, lo, hi), step = Math.max(0.02, 9 / len);
+        let pos = null;
+        for (let k = 0; !pos && (pref - k * step >= lo || pref + k * step <= hi); k++) {
+            for (const t of k ? [pref + k * step, pref - k * step] : [pref]) {
+                if (t < lo - 1e-9 || t > hi + 1e-9) continue;
+                const [x, y] = at(t);
+                if (free(rectAt(x, y))) { pos = { x, y, lead: null }; break; }
+            }
+        }
+        if (!pos) {                                          // sideways, tied to the track by a leader line
+            const nx = -(s.by - s.ay) / len, ny = (s.bx - s.ax) / len, [bx, by] = at(pref);
+            for (let k = 1; !pos && k <= 6; k++) {
+                for (const sign of [1, -1]) {
+                    const d = sign * k * (size.h + LABEL_GAP), x = clamp(bx + nx * d, cx0, cx1), y = clamp(by + ny * d, cy0, cy1);
+                    if (free(rectAt(x, y))) { pos = { x, y, lead: [bx, by] }; break; }
+                }
+            }
+        }
+        if (!pos) { const [x, y] = at(pref); pos = { x, y, lead: null }; }
+        const r = rectAt(pos.x, pos.y);
+        placed.push(r);
+        result[i] = { rect: r, lead: pos.lead };
+    }
+    return result;
+}
+
+function drawGemIcon(x, y, s, color) {
+    ctx.save();
+    ctx.fillStyle = color; ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y - s); ctx.lineTo(x + s * 0.9, y - s * 0.1); ctx.lineTo(x + s * 0.55, y + s * 0.9);
+    ctx.lineTo(x - s * 0.55, y + s * 0.9); ctx.lineTo(x - s * 0.9, y - s * 0.1); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+}
+
+// The two lines on a track offer's box.
+function trackLabelLines(o) { return [`length: ${Math.round(o.len)}m`, `cost: ${o.cost}`]; }
+
 function drawRailMode(cam, ax, ay, W, H, now) {
+    railLabelHits.length = 0;
     if (!railMode) return;
     const segs = railModeSegments(railMode, cam, ax, ay);
     for (const s of segs) {
@@ -208,14 +278,47 @@ function drawRailMode(cam, ax, ay, W, H, now) {
         ctx.globalAlpha = 0.45;                           // transparent: this is only an offer
         ART.track(ctx, s.ax, s.ay, s.bx, s.by, tile, 1);
         ctx.restore();
-        const o = s.opt, mx = (s.ax + s.bx) / 2, my = (s.ay + s.by) / 2;
-        pillText(trackLabel(o), mx, my, o.short > 0 ? HUD.amber : "#3ef07a");
     }
     ctx.save(); ctx.translate(ax, ay); ctx.rotate(-cam.h);   // the hub that would be built, under your robot
     ART.hub(ctx, 0, 0, tile, accent(G.me.hue), now, true);
     ctx.restore();
     pillText("TAP A TRACK TO BUILD IT", W / 2, H * 0.2, HUD.neon);
     pillText("TAP ELSEWHERE TO CANCEL", W / 2, H * 0.2 + tile * 1.1, HUD.dim);
+
+    // The boxes: small, two lines, clickable.
+    const S = Math.min(W, H), M = Math.max(8, S * 0.028), topH = Math.max(30, Math.min(58, S * 0.085));
+    const fs = clamp(tile * 0.4, 11, 17), gem = curColors().gem;
+    ctx.font = `bold ${fs}px ${HUD.font}`;
+    const lines = segs.map((s) => trackLabelLines(s.opt));
+    const gemW = fs * 1.1;
+    let w = 0;
+    for (const [l1, l2] of lines) w = Math.max(w, ctx.measureText(l1).width, ctx.measureText(l2).width + gemW);
+    const size = { w: w + fs * 1.1, h: fs * 2.55 };
+    const region = { x0: 4, y0: M + topH + M * 1.4, x1: W - 4, y1: H - Math.max(60, S * 0.2) };
+    const avoid = [{ x: ax - tile * 0.9, y: ay - tile * 0.9, w: tile * 1.8, h: tile * 1.8 }];
+    for (const [str, y] of [["TAP A TRACK TO BUILD IT", H * 0.2], ["TAP ELSEWHERE TO CANCEL", H * 0.2 + tile * 1.1]]) {
+        const pf = Math.max(11, tile * 0.42);
+        ctx.font = `bold ${pf}px ${HUD.font}`;
+        const pw = ctx.measureText(str).width + pf * 1.2, ph = pf * 1.8;
+        avoid.push({ x: W / 2 - pw / 2, y: y - ph / 2, w: pw, h: ph });
+    }
+    ctx.font = `bold ${fs}px ${HUD.font}`;
+    const placed = layoutTrackLabels(segs, size, region, avoid);
+    segs.forEach((s, i) => {
+        const { rect: r, lead } = placed[i];
+        if (lead) {                                        // a short line back to the track it belongs to
+            ctx.beginPath(); ctx.moveTo(lead[0], lead[1]); ctx.lineTo(r.x + r.w / 2, r.y + r.h / 2);
+            ctx.strokeStyle = HUD.neon; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+        rr(r.x, r.y, r.w, r.h, fs * 0.5);
+        ctx.fillStyle = "rgba(4,12,12,0.92)"; ctx.fill();
+        ctx.lineWidth = 1.8; ctx.strokeStyle = HUD.neon; ctx.stroke();
+        const [l1, l2] = lines[i];
+        text(l1, r.x + fs * 0.55, r.y + fs * 1.1, fs, "#cfeee6", "left", 0);
+        text(l2, r.x + fs * 0.55, r.y + fs * 2.1, fs, gem, "left", 0);
+        drawGemIcon(r.x + fs * 0.55 + ctx.measureText(l2).width + fs * 0.7, r.y + fs * 1.72, fs * 0.5, gem);
+        railLabelHits.push({ to: s.to, x: r.x, y: r.y, w: r.w, h: r.h });
+    });
 }
 
 // Travel mode: the tracks from the hub you're on glow; tapping one rides you along it.

@@ -134,6 +134,10 @@ function freePort() {
             out.hubMode = !!railMode && railMode.kind === "hub" && overlayOpen() && !canSteer();
             const hs = segsOf();
             out.hubSegs = hs.length === 2;
+            // Every offer has a small box (length, price) and they don't overlap or leave the screen.
+            out.boxes = railLabelHits.length === 2 && railLabelHits.every((h) => h.w > 0 && h.x >= 0 && h.y >= 0 && h.x + h.w <= W && h.y + h.h <= H);
+            const [b0, b1] = railLabelHits;
+            out.boxesApart = !(b0.x < b1.x + b1.w && b1.x < b0.x + b0.w && b0.y < b1.y + b1.h && b1.y < b0.y + b0.h);
             const [mx, my] = mid(hs.find((s) => s.to === 1));
             railTap(mx, my + 1);
             out.hubBuilt = sent.some((m) => m.action === "build_hub" && m.to === 1 && m.x === gx && m.y === gy) && !railMode;
@@ -144,6 +148,26 @@ function freePort() {
             railTap(W - 4, 4);
             out.hubCloses = !railMode && sent.length === 0;
 
+            // The small box of a track is clickable too: tapping it picks that track.
+            HANDLERS.hubopts({ x: gx, y: gy, opts: [
+                { to: 0, x: 0, y: 0, cost: 40, short: 0, len: 15, linked: true },
+                { to: 1, x: gx + 12, y: gy, cost: 37, short: 0, len: 12, linked: true }] });
+            await frames();
+            const box0 = railLabelHits.find((h) => h.to === 0);
+            railTap(box0.x + box0.w / 2, box0.y + box0.h / 2);
+            out.boxTap = sent.length === 1 && sent[0].action === "build_hub" && sent[0].to === 0 && !railMode;
+            sent.length = 0;
+            // The layout copes with tracks that leave in almost the same direction and that run off the screen.
+            const sizeB = { w: 96, h: 34 }, region = { x0: 4, y0: 70, x1: W - 4, y1: H - 90 }, avoid = [{ x: W / 2 - 30, y: H * ANCHOR_Y - 30, w: 60, h: 60 }];
+            const fan = (angles, len) => angles.map((a) => ({ ax: W / 2, ay: H * ANCHOR_Y, bx: W / 2 + Math.sin(a) * len, by: H * ANCHOR_Y - Math.cos(a) * len }));
+            const apart = (rs) => rs.every((r, i) => rs.every((q, j) => i === j || !(r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h)));
+            const inside = (rs) => rs.every((r) => r.x >= region.x0 - 1 && r.y >= region.y0 - 1 && r.x + r.w <= region.x1 + 1 && r.y + r.h <= region.y1 + 1);
+            const clearOf = (rs) => rs.every((r) => !(r.x < avoid[0].x + avoid[0].w && avoid[0].x < r.x + r.w && r.y < avoid[0].y + avoid[0].h && avoid[0].y < r.y + r.h));
+            const cases = [fan([0, 0.05, 0.1], 900), fan([0, 1.2, 2.4, 3.6], 1500), fan([0.3, 0.32, 0.34, 0.36], 60), fan([-1.5, 1.5, 3.1], 400)];
+            const laid = cases.map((c) => layoutTrackLabels(c, sizeB, region, avoid).map((p) => p.rect));
+            out.layoutApart = laid.every(apart);
+            out.layoutOnScreen = laid.every(inside);
+            out.layoutClearOfRobot = laid.every(clearOf);
             // Only one possible track: nothing to pick, it is built straight away.
             HANDLERS.hubopts({ x: gx, y: gy, opts: [{ to: 1, x: gx + 12, y: gy, cost: 37, short: 0, len: 12, linked: true }] });
             out.singleBuilds = !railMode && sent.length === 1 && sent[0].action === "build_hub" && sent[0].to === 1
@@ -233,6 +257,12 @@ function freePort() {
         ["shownWhenRich", "the HUB button shows when the player can pay"],
         ["hubMode", "HUB opens a mode that stops steering"],
         ["hubSegs", "HUB offers each candidate as a track"],
+        ["boxes", "each track offer has a box that is on screen"],
+        ["boxesApart", "the boxes don't overlap"],
+        ["boxTap", "tapping a track's box picks that track"],
+        ["layoutApart", "labels of nearly parallel or off-screen tracks don't overlap"],
+        ["layoutOnScreen", "labels stay inside the screen area"],
+        ["layoutClearOfRobot", "labels stay off the robot"],
         ["hubBuilt", "tapping a ghost track builds that one"],
         ["hubCloses", "tapping outside every track closes the HUB menu"],
         ["singleBuilds", "a single possible track is built without asking to pick it"],
@@ -385,8 +415,8 @@ function freePort() {
         await frames(6);
         out.noCostWithoutAmount = (HANDLERS.built({}), G.floats.length === 1);
         G.floats.length = 0;
-        out.labelPlain = trackLabel({ len: 13.6, cost: 39, short: 0 }) === "14m \u00b7 39";
-        out.labelShort = trackLabel({ len: 20, cost: 45, short: 15 }) === "20m \u00b7 45 (15 from score)";
+        out.labelPlain = JSON.stringify(trackLabelLines({ len: 19.6, cost: 45, short: 0 })) === JSON.stringify(["length: 20m", "cost: 45"]);
+        out.labelNoScore = JSON.stringify(trackLabelLines({ len: 20, cost: 45, short: 15 })) === JSON.stringify(["length: 20m", "cost: 45"]);   // paying by score is asked about afterwards
         G.toasts.length = 0; G.scoreFlash = 0;
         return out;
     });
@@ -398,8 +428,8 @@ function freePort() {
         ["floatFades", "the amount fades away"],
         ["costFloat", "a finished build floats its cost as a negative amount"],
         ["noCostWithoutAmount", "a build without an amount floats nothing"],
-        ["labelPlain", "a track offer shows its length and price"],
-        ["labelShort", "an offer partly paid from score says how much"],
+        ["labelPlain", "a track offer's box says 'length: 20m' and 'cost: 45'"],
+        ["labelNoScore", "the box never mentions paying from score"],
     ]) check(bank[k] === true, what);
 
     // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---

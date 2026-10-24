@@ -168,8 +168,8 @@ const scenes = [
             { to: 1, x: s.qx, y: s.qy, cost: 25 + s.d1, short: 0, len: s.d1, linked: true }] });
         return { found: [s.px, s.py, s.qx, s.qy] };
     }, async () => {
-        const [px, py, qx, qy] = S.last.found, a = sp((px + qx) / 2, (py + qy) / 2), b = sp(px / 2, py / 2);
-        return { priceA: around(a[0], a[1], tile * 2.2, tile * 0.75), priceB: around(b[0], b[1], tile * 2.2, tile * 0.75) };
+        const box = (to) => { const h = railLabelHits.find((r) => r.to === to); return h && [h.x, h.y, h.w, h.h].map(Math.round); };
+        return { priceA: box(1), priceB: box(0) };
     }],
     ["travel", () => {
         const s = hubSpot();

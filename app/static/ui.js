@@ -306,6 +306,8 @@ function railTap(sx, sy) {
         const d = distToSegment(sx, sy, s.ax, s.ay, s.bx, s.by);
         if (d <= bd) { bd = d; best = s; }
     }
+    const box = railLabelHits.find((h) => inRect(h, sx, sy));    // the small length/price box of a track picks that track too
+    if (box) { send({ action: "build_hub", to: box.to, x: mode.x, y: mode.y }); return; }
     if (!best) return;                                       // tapped outside every track: just close
     send({ action: "build_hub", to: best.to, x: mode.x, y: mode.y });
 }
