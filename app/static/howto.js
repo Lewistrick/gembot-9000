@@ -22,7 +22,7 @@ const SLIDES = [
     {
         title: "Far-away gems are worth more.",
         imgs: [{ shot: "mega", marks: ["gem:ring", "gem:arrow-down"] }],
-        lines: ["The farther from the base, the <b>richer</b> the gems.", "They are also <b>rarer</b>.", "<b>Mega gems</b> glow amber and are worth a lot."],
+        lines: ["The farther from the base, the <b>richer</b> the gems.", "They are just as <b>common</b> far out.", "<b>Mega gems</b> glow amber and are worth a lot."],
     },
     {
         title: "Spot them on the minimap.",
@@ -112,7 +112,7 @@ const SLIDES = [
     {
         title: "The big map.",
         imgs: [{ shot: "bigmap", marks: ["you:ring", "base:ring", "cross:box"] }],
-        lines: ["North is up. The <b>base</b> and <b>you</b> blink.", "<b>Drag</b> to pan. <b>Scroll</b> or <b>pinch</b> to zoom.", "Leave with the <b>cross</b> (or Esc)."],
+        lines: ["It shows <b>150 tiles</b> around each hub. The <b>base</b> and <b>you</b> blink.", "<b>Drag</b> to pan. <b>Scroll</b> or <b>pinch</b> to zoom.", "Leave with the <b>cross</b> (or Esc)."],
     },
     {
         title: "Chat.",

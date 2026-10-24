@@ -96,3 +96,19 @@ def test_mega_gems_placed_far_out_and_fixed_value() -> None:
         assert MEGA_MIN_DIST - 45 <= (x * x + y * y) ** 0.5 <= MEGA_MAX_DIST + 45
     assert World("2026-10-22").mega_sites == sites
     assert World("2026-10-23").mega_sites != sites
+
+
+def test_gems_are_as_common_far_out_as_near_the_base() -> None:
+    world = World("2026-10-22")
+
+    def density(x0: int, y0: int) -> float:
+        floor = sum(
+            world.is_floor(x, y)
+            for x in range(x0, x0 + 132)
+            for y in range(y0, y0 + 132)
+        )
+        gems = [g for g in world.gems_in(x0, y0, 132, 132) if g[2] < MEGA_VALUE]
+        return len(gems) / max(1, floor)
+
+    near, far = density(-66, -66), density(700, 700)  # ~1000 tiles out
+    assert far > 0.5 * near and far > 0
