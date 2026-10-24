@@ -119,7 +119,11 @@ function drawScorePanel(x, y, w, h) {
     text("CARGO", cx, y + h * 0.3, Math.max(9, h * 0.2), HUD.dim, "left", 0);
     const cs = String(G.cargo);
     text(cs, cx, y + h * 0.68, fitSize(cs, cw, Math.max(14, h * 0.4), 10), has ? HUD.amber : HUD.dim, "left", has ? 8 : 0);
-    if (has && Math.hypot(G.x, G.y) > G.baseR) text("TO BASE", cx, y + h * 0.92, Math.max(8, h * 0.16), HUD.amber, "left", 0);
+    // Under the cargo: how full the hold is near the cap, otherwise where it should go.
+    const small = Math.max(8, h * 0.16);
+    if (G.cargo >= G.cargoMax) text("FULL", cx, y + h * 0.92, small, "#ff6b5e", "left", 0);
+    else if (G.cargo >= G.cargoMax * 0.8) text(`OF ${G.cargoMax}`, cx, y + h * 0.92, small, HUD.amber, "left", 0);
+    else if (has && Math.hypot(G.x, G.y) > G.baseR) text("TO BASE", cx, y + h * 0.92, small, HUD.amber, "left", 0);
     ctx.strokeStyle = "rgba(79,242,200,0.25)"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(mid, y + h * 0.15); ctx.lineTo(mid, y + h * 0.85); ctx.stroke();
     // Score and the way home. It blinks for a moment after tolls came in (players or gems rode over your hubs).

@@ -69,8 +69,15 @@ BASE_RADIUS: int = _SPAWN_RADIUS
 _HUE_RATE: float = 0.0005
 """Hue turns (0..1) per tile of distance from the origin — a very slow colour drift."""
 
-_GEM_MAX_P: float = 0.02
-"""Gem chance per wall-touching floor tile, the same everywhere (far out is only richer)."""
+_GEM_INNER_RADIUS: float = 250.0
+"""Within this distance of the origin gems are common; beyond it they are sparse."""
+
+_GEM_INNER_P: float = 0.01
+"""Gem chance per wall-touching floor tile inside the inner radius."""
+
+_GEM_OUTER_SPACING: int = 150
+"""Beyond the inner radius: one gem per square of this many tiles, at a jittered spot
+in the middle half of the square, so neighbouring gems are mostly 100-200 tiles apart."""
 
 _GEM_VALUE_MIN: int = 10
 _GEM_VALUE_MAX: int = 40
@@ -488,11 +495,12 @@ def generate_chunk(
 class Chunk:
     """One cached chunk: its floor bitmap and (lazily) the gem sites inside it."""
 
-    __slots__ = ("floor", "gems")
+    __slots__ = ("floor", "gems", "sites")
 
     def __init__(self, floor: np.ndarray) -> None:
         self.floor = floor  # (CHUNK, CHUNK) bool, [row, col], True = floor
         self.gems: dict[tuple[int, int], int] | None = None  # world (x, y) -> value
+        self.sites: tuple[np.ndarray, np.ndarray] | None = None  # floor touching rock
 
 
 def rock_gem_value(base_roll: float, x: int, y: int) -> int:
@@ -519,6 +527,9 @@ class World:
         self.style = style
         self.seed = seed_to_int(seed_str)
         self._chunks: OrderedDict[tuple[int, int], Chunk] = OrderedDict()
+        self._outer: dict[
+            tuple[int, int], tuple[int, int] | None
+        ] = {}  # far gem squares
         self._lock = threading.Lock()
         self._mega: dict[tuple[int, int], int] | None = None
         self._mega_lock = threading.Lock()
@@ -580,8 +591,9 @@ class World:
         """Gem sites in a chunk as ``{(x, y): value}``. Deterministic per seed.
 
         Ordinary gems form only on floor tiles that touch a wall, so they sit in
-        the rock face, with chance ``_GEM_MAX_P`` everywhere; they grow richer with
-        distance from the origin (``base * (1 + d/150)``).
+        the rock face: by chance ``_GEM_INNER_P`` within ``_GEM_INNER_RADIUS`` of the
+        origin, and sparsely beyond (about one per ``_GEM_OUTER_SPACING`` square, see
+        :meth:`_outer_gem_sites`). They grow richer with distance (``base * (1 + d/150)``).
         Collection is tracked elsewhere; this reflects only the world's terrain.
         """
         chunk = self.chunk(cx, cy)
@@ -589,29 +601,81 @@ class World:
             chunk.gems = self._compute_gems(cx, cy)
         return chunk.gems
 
-    def _compute_gems(self, cx: int, cy: int) -> dict[tuple[int, int], int]:
-        c = CHUNK
-        big = np.block(
-            [
-                [self.chunk(cx + dx, cy + dy).floor for dx in (-1, 0, 1)]
+    def _sites(self, cx: int, cy: int) -> tuple[np.ndarray, np.ndarray]:
+        """World ``(xs, ys)`` of the floor tiles in a chunk that touch rock (cached)."""
+        chunk = self.chunk(cx, cy)
+        if chunk.sites is None:
+            c = CHUNK
+            big = np.block(
+                [
+                    [self.chunk(cx + dx, cy + dy).floor for dx in (-1, 0, 1)]
+                    for dy in (-1, 0, 1)
+                ]
+            )
+            mid = big[c : 2 * c, c : 2 * c]
+            all_around = (
+                big[c - 1 : 2 * c - 1, c : 2 * c]
+                & big[c + 1 : 2 * c + 1, c : 2 * c]
+                & big[c : 2 * c, c - 1 : 2 * c - 1]
+                & big[c : 2 * c, c + 1 : 2 * c + 1]
+            )
+            rows, cols = np.nonzero(mid & ~all_around)
+            chunk.sites = (
+                cx * c + cols.astype(np.int64),
+                cy * c + rows.astype(np.int64),
+            )
+        return chunk.sites
+
+    def _outer_site(self, gx: int, gy: int) -> tuple[int, int] | None:
+        """Where the sparse far gem of square ``(gx, gy)`` sits, or None (cached).
+
+        Each square of ``_GEM_OUTER_SPACING`` tiles has one spot, jittered within its
+        middle half; the gem goes to the gem site nearest that spot, looking in the
+        spot's chunk and the eight around it. Squares whose spot lies inside the inner
+        radius have none."""
+        key = (gx, gy)
+        if key in self._outer:
+            return self._outer[key]
+        s, c = _GEM_OUTER_SPACING, CHUNK
+        tx = (gx + 0.25 + 0.5 * _rand01(self.seed, 0x6E72, gx, gy)) * s
+        ty = (gy + 0.25 + 0.5 * _rand01(self.seed, 0x6E73, gx, gy)) * s
+        site = None
+        if math.hypot(tx, ty) >= _GEM_INNER_RADIUS:
+            scx, scy = int(tx // c), int(ty // c)
+            parts = [
+                self._sites(scx + dx, scy + dy)
+                for dx in (-1, 0, 1)
                 for dy in (-1, 0, 1)
             ]
-        )
-        mid = big[c : 2 * c, c : 2 * c]
-        all_around = (
-            big[c - 1 : 2 * c - 1, c : 2 * c]
-            & big[c + 1 : 2 * c + 1, c : 2 * c]
-            & big[c : 2 * c, c - 1 : 2 * c - 1]
-            & big[c : 2 * c, c + 1 : 2 * c + 1]
-        )
-        rows, cols = np.nonzero(mid & ~all_around)  # floor cells touching rock
+            xs = np.concatenate([p[0] for p in parts])
+            ys = np.concatenate([p[1] for p in parts])
+            if xs.size:
+                i = int(np.argmin((xs - tx) ** 2 + (ys - ty) ** 2))
+                site = (int(xs[i]), int(ys[i]))
+        self._outer[key] = site
+        return site
+
+    def _compute_gems(self, cx: int, cy: int) -> dict[tuple[int, int], int]:
+        c, s = CHUNK, _GEM_OUTER_SPACING
+        ax, ay = self._sites(cx, cy)
         gems: dict[tuple[int, int], int] = {}
-        if rows.size:
-            xs, ys = cx * c + cols.astype(np.int64), cy * c + rows.astype(np.int64)
-            dist = np.hypot(xs, ys)
-            prob = _GEM_MAX_P
-            keep = _rand01_arr(self.seed, xs.shape, 0x6E71, xs, ys) < prob
-            xs, ys, dist = xs[keep], ys[keep], dist[keep]
+        if ax.size:
+            dist = np.hypot(ax, ay)
+            # Inside the inner radius: each site by chance.
+            keep = (dist < _GEM_INNER_RADIUS) & (
+                _rand01_arr(self.seed, ax.shape, 0x6E71, ax, ay) < _GEM_INNER_P
+            )
+            # Beyond it: the sparse far gems whose site is in this chunk. Their spots lie
+            # in this chunk or one next to it.
+            x0, y0 = cx * c, cy * c
+            for gx in range((x0 - c) // s, (x0 + 2 * c - 1) // s + 1):
+                for gy in range((y0 - c) // s, (y0 + 2 * c - 1) // s + 1):
+                    site = self._outer_site(gx, gy)
+                    if site is None or site[0] // c != cx or site[1] // c != cy:
+                        continue
+                    if math.hypot(*site) >= _GEM_INNER_RADIUS:
+                        keep |= (ax == site[0]) & (ay == site[1])
+            xs, ys, dist = ax[keep], ay[keep], dist[keep]
             if xs.size:
                 span = _GEM_VALUE_MAX - _GEM_VALUE_MIN + 1
                 base = _GEM_VALUE_MIN + (

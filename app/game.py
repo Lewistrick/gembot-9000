@@ -29,6 +29,8 @@ IDLE_WARN = 9 * 60.0  # idle seconds before the "still there?" warning
 IDLE_KICK = 10 * 60.0  # idle seconds before the player is removed
 IDLE_CROWD = 10  # idle players are removed only while more than this many are in
 FOLLOW_IDLE = 5 * 60.0  # no input for this long: inactive, and can't be followed
+CARGO_MAX = 500  # a robot carries at most this much: bank or ship it, then mine on
+CARGO_FULL_EVERY = 10.0  # seconds between "cargo full" notices
 DRILL_GEM_CHANCE = 0.01  # chance that a drilled rock holds a gem (valued by distance)
 DISCONNECT_GRACE = 15.0  # seconds a dropped robot lingers before leaving the world
 BOARD_EVERY = 40  # ticks between leaderboard refreshes (2 s at 20 Hz)
@@ -416,10 +418,12 @@ class Game:
         self.drilled_log.append(cell)
         if self.rng.random() < DRILL_GEM_CHANCE:  # now and then the rock hides a gem
             value = rock_gem_value(self.rng.random(), *cell) * self.multiplier
-            player.cargo += value
-            player.notices.append(
-                {"t": "gain", "v": value, "mega": False, "rock": True}
-            )
+            if player.cargo + value > CARGO_MAX:  # no room: it crumbles with the rock
+                self._cargo_full(player)
+            else:
+                player.cargo += value
+                notice = {"t": "gain", "v": value, "mega": False, "rock": True}
+                player.notices.append(notice)
 
     def _pickup(self, player: Player) -> None:
         cell = (round(player.x), round(player.y))
@@ -429,6 +433,9 @@ class Game:
         if base is None:
             return
         value = base * self.multiplier
+        if player.cargo + value > CARGO_MAX:  # no room: the gem stays where it is
+            self._cargo_full(player)
+            return
         self.mined.add(cell)
         self.mined_log.append(cell)
         player.cargo += value
@@ -436,6 +443,13 @@ class Game:
         player.notices.append({"t": "gain", "v": value, "mega": mega})
         if mega:
             self.announce(f"{player.name} mined a MEGA gem worth {value}!")
+
+    def _cargo_full(self, player: Player) -> None:
+        """Tell a player (now and then) that the cargo hold is full."""
+        now = self.clock()
+        if now - player.full_told >= CARGO_FULL_EVERY:
+            player.full_told = now
+            player.notices.append({"t": "cargofull", "max": CARGO_MAX})
 
     def _check_light(self, player: Player) -> None:
         """Too far from every hub: the robot is lost, comes home and loses half its cargo."""

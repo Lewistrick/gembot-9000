@@ -11,7 +11,7 @@ const SLIDES = [
     {
         title: "You are a GemBot. Your goal is to collect gems.",
         imgs: [{ shot: "gem", marks: ["gem:ring", "gem:arrow-down"] }],
-        lines: ["Drive over a gem to mine it.", "It goes into your <b>cargo</b>.", "A mined gem is gone for <b>everyone</b>."],
+        lines: ["Drive over a gem to mine it.", "It goes into your <b>cargo</b> (up to <b>500</b>).", "A mined gem is gone for <b>everyone</b>."],
     },
     {
         title: "Bring gems to the base to score points.",
@@ -22,7 +22,7 @@ const SLIDES = [
     {
         title: "Far-away gems are worth more.",
         imgs: [{ shot: "mega", marks: ["gem:ring", "gem:arrow-down"] }],
-        lines: ["The farther from the base, the <b>richer</b> the gems.", "They are just as <b>common</b> far out.", "<b>Mega gems</b> glow amber and are worth a lot."],
+        lines: ["The farther from the base, the <b>richer</b> the gems.", "Beyond <b>250 tiles</b> they are sparse: one every 100-200 tiles.", "<b>Mega gems</b> glow amber and are worth a lot."],
     },
     {
         title: "Spot them on the minimap.",

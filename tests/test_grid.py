@@ -98,17 +98,34 @@ def test_mega_gems_placed_far_out_and_fixed_value() -> None:
     assert World("2026-10-23").mega_sites != sites
 
 
-def test_gems_are_as_common_far_out_as_near_the_base() -> None:
+def test_gems_are_common_near_the_base_and_sparse_but_evenly_spread_far_out() -> None:
+    import math
+
     world = World("2026-10-22")
+    inner = [g for g in world.gems_in(-200, -200, 400, 400) if g[2] < MEGA_VALUE]
+    assert len(inner) > 100  # plenty within the inner radius
+    megas = (
+        world.mega_sites
+    )  # (far gems can be worth as much as a mega gem: tell them by place)
+    far = [
+        (x, y) for x, y, _ in world.gems_in(450, 450, 900, 900) if (x, y) not in megas
+    ]
+    # about one per 150x150 square out there (36 squares here, a few spill over the edge)
+    assert 30 <= len(far) <= 40
+    nn = [
+        min(math.hypot(x - a, y - b) for a, b in far if (a, b) != (x, y))
+        for x, y in far
+    ]
+    mostly = sum(90 <= d <= 210 for d in nn) / len(nn)
+    assert mostly >= 0.8  # neighbours mostly 100-200 tiles apart
 
-    def density(x0: int, y0: int) -> float:
-        floor = sum(
-            world.is_floor(x, y)
-            for x in range(x0, x0 + 132)
-            for y in range(y0, y0 + 132)
-        )
-        gems = [g for g in world.gems_in(x0, y0, 132, 132) if g[2] < MEGA_VALUE]
-        return len(gems) / max(1, floor)
 
-    near, far = density(-66, -66), density(700, 700)  # ~1000 tiles out
-    assert far > 0.5 * near and far > 0
+def test_every_far_square_gets_one_gem_and_chunks_agree_on_it() -> None:
+    a, b = World("2026-10-24"), World("2026-10-24")
+    sites = [a._outer_site(gx, gy) for gx in range(3, 9) for gy in range(3, 9)]
+    found = [st for st in sites if st is not None]
+    assert len(found) == len(sites)
+    for x, y in found[
+        :6
+    ]:  # the chunk holding the site has the gem, however it is reached
+        assert (x, y) in b.chunk_gems(x // CHUNK, y // CHUNK)
