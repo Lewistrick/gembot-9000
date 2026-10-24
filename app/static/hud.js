@@ -122,12 +122,14 @@ function drawScorePanel(x, y, w, h) {
     if (has && Math.hypot(G.x, G.y) > G.baseR) text("TO BASE", cx, y + h * 0.92, Math.max(8, h * 0.16), HUD.amber, "left", 0);
     ctx.strokeStyle = "rgba(79,242,200,0.25)"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(mid, y + h * 0.15); ctx.lineTo(mid, y + h * 0.85); ctx.stroke();
-    // Score and the way home.
+    // Score and the way home. It blinks for a moment after tolls came in (players or gems rode over your hubs).
     const rx = x + w - h * 0.3, sw = rx - mid - h * 0.15;
+    const sinceToll = performance.now() - G.scoreFlash, blink = sinceToll < 1800 && Math.floor(sinceToll / 150) % 2 === 0;
+    if (blink) { rr(mid + 2, y + 3, x + w - mid - 5, h - 6, Math.min(8, h * 0.2)); ctx.fillStyle = "rgba(62,240,122,0.5)"; ctx.fill(); }
     const dist = Math.max(0, Math.round(Math.hypot(G.x, G.y) - G.baseR));
     text("SCORE" + (G.rank ? `  #${G.rank}` : ""), rx, y + h * 0.3, Math.max(9, h * 0.2), HUD.dim, "right", 0);
     const ss = String(G.score);
-    text(ss, rx, y + h * 0.63, fitSize(ss, sw, Math.max(14, h * 0.42), 10), HUD.neon, "right", 8);
+    text(ss, rx, y + h * 0.63, fitSize(ss, sw, Math.max(14, h * 0.42), 10), blink ? "#ffffff" : HUD.neon, "right", 8);
     text(dist > 0 ? `BASE ${dist}m` : "AT BASE", rx, y + h * 0.9, Math.max(10, h * 0.22), HUD.amber, "right", 6);
 }
 

@@ -363,6 +363,33 @@ function freePort() {
         ["netEsc", "Escape leaves the network map"],
     ]) check(aids[k] === true, what);
 
+    // --- Banking: a "+amount" floats up from the robot and fades; tolls make the score blink ---
+    const bank = await a.evaluate(async () => {
+        const frames = (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+        const out = {};
+        G.floats.length = 0; G.scoreFlash = 0; G.toasts.length = 0;
+        HANDLERS.delivered({ v: 57 });
+        out.floatAdded = G.floats.length === 1 && G.floats[0].v === 57;
+        await frames(12);                                  // drawn (above the robot) without errors
+        out.floatStays = G.floats.length === 1;
+        out.noBlinkForOwnGems = G.scoreFlash === 0;
+        HANDLERS.toll({ v: 1, from: "Zed" });
+        out.blink = performance.now() - G.scoreFlash < 100;
+        await frames(12);
+        await new Promise((r) => setTimeout(r, 1900));
+        await frames(3);
+        out.floatFades = G.floats.length === 0;
+        G.toasts.length = 0; G.scoreFlash = 0;
+        return out;
+    });
+    for (const [k, what] of [
+        ["floatAdded", "banking gems floats the amount above the robot"],
+        ["floatStays", "the amount stays for a moment"],
+        ["noBlinkForOwnGems", "banking your own gems doesn't blink the score"],
+        ["blink", "a toll makes the score blink"],
+        ["floatFades", "the amount fades away"],
+    ]) check(bank[k] === true, what);
+
     // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---
     const light = await a.evaluate(async () => {
         const frames = (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });

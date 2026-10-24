@@ -15,8 +15,10 @@ MAX_SPEED = 15.0  # tiles/second (must keep speed*TICK < 1 so we can't skip tile
 ACCEL = 16.0  # tiles/second^2 while accelerating (Up)
 BRAKE = 26.0  # tiles/second^2 while braking (Down)
 DRAG = 0.5  # fraction of speed lost per second when coasting
-STEER = 2.8  # radians/second while steering at speed (Left/Right)
-STEER_MIN = 0.35  # fraction of the steering rate available at a standstill
+STEER_SLOW = (
+    3.2  # radians/second while steering at a crawl: sharp, so tight spots are easy
+)
+STEER_FAST = 1.6  # ...and at top speed: wide, so a fast robot can't whip around (radius ~9 tiles)
 STEER_ACCEL = 8.0  # radians/second^2 the turn rate builds up while a steer key is held
 STEER_EASE = 10.0  # radians/second^2 it eases back to straight once released
 
@@ -50,6 +52,11 @@ class Ride:
 
     pts: list[tuple[float, float]]
     i: int = 0
+
+
+def turn_rate(speed: float) -> float:
+    """Radians/second available when steering at ``speed`` (tiles/second)."""
+    return STEER_SLOW + (STEER_FAST - STEER_SLOW) * _clamp(speed / MAX_SPEED, 0.0, 1.0)
 
 
 @dataclass
@@ -152,9 +159,9 @@ class Player:
             self.speed *= FLIP_SLOW
             self.spin = 0.0
         else:
-            # Turn rate scales with speed (subtle at a crawl, fuller at speed), but
-            # the robot only builds up to it and eases back, so steering is not abrupt.
-            turn = STEER * (STEER_MIN + (1.0 - STEER_MIN) * self.speed / MAX_SPEED)
+            # The turn rate falls as speed rises (sharp at a crawl, wide at full speed), and the
+            # robot only builds up to it and eases back, so steering is not abrupt.
+            turn = turn_rate(self.speed)
             want = turn * (self.right - self.left)
             rate = STEER_ACCEL if want else STEER_EASE
             self.spin += _clamp(want - self.spin, -rate * dt, rate * dt)

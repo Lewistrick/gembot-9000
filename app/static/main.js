@@ -233,6 +233,28 @@ function drawTravelMode(cam, ax, ay, W, H, now) {
     pillText("PRESS TRAVEL AGAIN TO STOP", W / 2, H * 0.2 + tile * 1.1, HUD.dim);
 }
 
+// "+amount" texts that float up from the robot and fade when gems are banked (in the gems' colour, with a dark outline to read on any floor).
+const FLOAT_MS = 1700;
+function drawFloats(ax, ay, now, colors) {
+    G.floats = G.floats.filter((f) => now - f.t0 < FLOAT_MS);
+    if (!G.floats.length) return;
+    const fs = clamp(tile * 0.95, 20, 40);
+    ctx.save();
+    ctx.font = `bold ${fs}px ${HUD.font}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    for (const f of G.floats) {
+        const t = (now - f.t0) / FLOAT_MS, ease = 1 - (1 - t) * (1 - t);
+        const y = ay - tile * 1.9 - ease * tile * 2.6;                   // starts above the name tag, drifts up
+        ctx.globalAlpha = t < 0.45 ? 1 : 1 - (t - 0.45) / 0.55;           // holds, then fades
+        const str = `+${f.v}`;
+        ctx.lineWidth = fs * 0.34; ctx.strokeStyle = "rgba(4,10,14,0.92)"; ctx.strokeText(str, ax, y);
+        ctx.shadowColor = colors.gem; ctx.shadowBlur = fs * 0.5;
+        ctx.fillStyle = colors.gem; ctx.fillText(str, ax, y);
+        ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+}
+
 // Light: the robot sees only near a hub (the base is one). Darker from G.light[0] tiles away,
 // pitch black from G.light[1]; the server sends the robot home from G.light[2].
 let wasDark = false, lightAt = 0;
@@ -293,6 +315,7 @@ function draw() {
     robotHits.push({ x: ax, y: ay, r: tile * 0.75, me: true });
     drawRobotLabels(ax, ay, G.meta.get(G.me.num) || { name: G.me.name, chat: "", id: G.me.id }, now);
     drawArrows(cam, ax, ay, now);
+    drawFloats(ax, ay, now, colors);
     drawRailMode(cam, ax, ay, W, H, now);
     drawTravelMode(cam, ax, ay, W, H, now);
 

@@ -32,6 +32,8 @@ const G = {
     showMap: false,            // minimap around the player
     showNetwork: false,        // the fullscreen rail network, north up (never remembered across loads)
     toasts: [],                // { text, color, t0, dur }
+    floats: [],                // { v, t0 }: "+amount" texts that float up from the robot when gems are banked
+    scoreFlash: 0,             // performance.now() of the last toll income: the score blinks for a moment after
     idleUntil: 0,              // performance.now() deadline of the idle warning, or 0
 };
 
@@ -116,7 +118,7 @@ function otherPos(o, now) {
 // ---- Connecting ----
 function resetClientWorld() {
     clearWorld();
-    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showNetwork = false; G.lightD = G.dark = 0;
+    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.floats.length = 0; G.scoreFlash = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showNetwork = false; G.lightD = G.dark = 0;
     if (typeof clearRailUi === "function") clearRailUi();
     G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
     haveCam = false;
@@ -223,7 +225,7 @@ const HANDLERS = {
     announce(m) { toast(m.text, HUD.amber, 5000); },
     hubs(m) { for (const r of m.list) G.hubs.set(r[0], { id: r[0], x: r[1], y: r[2], bn: r[3], out: r[4] }); },
     rail(m) { toast(m.msg, m.ok ? "#3ef07a" : "#ff6b5e", m.ok ? 2500 : 4000); },
-    toll(m) { toast(`+${m.v} toll from ${m.from}`, "#3ef07a", 2500); },
+    toll(m) { toast(`+${m.v} toll from ${m.from}`, "#3ef07a", 2500); G.scoreFlash = performance.now(); },
     hubopts(m) { openHubMode(m); },
     pay(m) { openPayDialog(m); },
     built() { closeRailMode(); },
@@ -234,7 +236,11 @@ const HANDLERS = {
             : "NEW DAY! A fresh mine awaits.", HUD.amber, 9000);
     },
     gain(m) { toast(`+${m.v}${m.mega ? "  MEGA GEM!" : ""}`, m.mega ? HUD.amber : HUD.neon, m.mega ? 4500 : 1800); },
-    delivered(m) { toast(`BANKED +${m.v}`, "#3ef07a", 3000); },
+    delivered(m) {
+        toast(`BANKED +${m.v}`, "#3ef07a", 3000);
+        G.floats.push({ v: m.v, t0: performance.now() });
+        if (G.floats.length > 6) G.floats.shift();
+    },
     warn(m) { G.idleUntil = performance.now() + m.left * 1000; },
     kicked(m) {
         wantPlaying = false;
