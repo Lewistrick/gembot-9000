@@ -31,7 +31,7 @@ const G = {
     dark: 0,                   // how dark the screen is right now, 0..1 (eased)
     showArrows: false,         // lens: arrows to the base, nearest gem and nearest hub
     showMap: false,            // minimap around the player
-    showNetwork: false,        // the fullscreen rail network, north up (never remembered across loads)
+    showBigMap: false,         // the big map: the minimap fullscreen, north up (never remembered across loads)
     toasts: [],                // { text, color, t0, dur }
     floats: [],                // { v, t0 }: "+amount" texts that float up from the robot when gems are banked
     chips: [],                 // { x, y, vx, vy, r, t0 }: gems shaken out of the cargo by a crash, scattering (world tiles)
@@ -127,7 +127,7 @@ function otherPos(o, now) {
 // ---- Connecting ----
 function resetClientWorld() {
     clearWorld();
-    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.floats.length = 0; G.chips.length = 0; G.crashes.length = 0; G.scoreFlash = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showNetwork = false; G.lightD = G.dark = 0;
+    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.floats.length = 0; G.chips.length = 0; G.crashes.length = 0; G.scoreFlash = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showBigMap = false; G.lightD = G.dark = 0;
     if (typeof clearRailUi === "function") clearRailUi();
     G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
     haveCam = false;

@@ -29,7 +29,7 @@ canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse") return;
     touchMode = true;
     const [x, y, w] = localPoint(e);
-    downOnHud = onHudButton(x, y) || !!railMode || travelMode || G.showNetwork;   // picking a track / the network map: a touch is a tap or a drag, not steering
+    downOnHud = onHudButton(x, y) || !!railMode || travelMode || G.showBigMap;   // picking a track / the big map: a touch is a tap or a drag, not steering
     if (downOnHud) return;
     touches.set(e.pointerId, x < w / 2 ? "L" : "R");
     downAt.set(e.pointerId, { x, y, t: performance.now() });

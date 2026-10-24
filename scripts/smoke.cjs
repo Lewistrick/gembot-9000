@@ -343,7 +343,11 @@ function freePort() {
         await frames(); await frames();                  // the minimap draws floor, rock, gems and hubs
         click(hudHit.minimap);
         out.mapOff = G.showMap === false;
-        out.netButton = !!hudHit.network && hudHit.network.x > hudHit.minimap.x;
+        // The network button is gone; tapping the minimap itself opens the big map.
+        out.noNetworkButton = !("network" in hudHit) || !hudHit.network;
+        click(hudHit.minimap);                           // minimap on again
+        await frames();
+        out.mapTapTarget = !!hudHit.minimapView && hudHit.minimapView.y > hudHit.minimap.y + hudHit.minimap.h - 1;
         G.hubs.set(1, { id: 1, x: 40, y: -10, bn: 2, out: 0 });
         G.hubs.set(2, { id: 2, x: 70, y: 30, bn: 3, out: 1 });
         const realTick = HANDLERS.tick;
@@ -351,46 +355,66 @@ function freePort() {
         const ptr = (type, id, x, y, kind = "mouse") => canvas.dispatchEvent(new PointerEvent(type,
             { pointerId: id, pointerType: kind, clientX: rect.left + x, clientY: rect.top + y, bubbles: true }));
         const W = rect.width, H = rect.height;
-        click(hudHit.network);
-        out.netOn = G.showNetwork === true && overlayOpen() && !canSteer();
-        await frames(); await frames();                  // fullscreen, north up, base and you marked
-        out.netCross = !!hudHit.netClose && !hudHit.hamburger && !hudHit.minimap && hudHit.netClose.x > W / 2;
-        const fit = netView.sc, c0 = [netView.cx, netView.cy];
+        mapView.sc = 0;                                   // as on a first visit
+        // (the drilling checks cleared the loaded terrain, so lend the map one chunk of floor with a gem)
+        const lent = !chunks.size;
+        if (lent) { chunks.set("0,0", { cx: 0, cy: 0, floor: new Uint8Array(CS * CS).fill(1), gems: [[3, 3, 5]], mega: new Set() }); chunkVersion++; }
+        click(hudHit.minimapView);
+        out.bigOn = G.showBigMap === true && overlayOpen() && !canSteer() && G.showMap === true;
+        out.bigCentred = Math.abs(mapView.cx - G.x) < 1e-6 && Math.abs(mapView.cy - G.y) < 1e-6;
+        await frames(); await frames();                  // floor, rock, gems, hubs, tracks, the base and you
+        out.bigTerrain = !!bigMapTiles && bigMapTiles.canvas.width >= CS && bigMapTiles.canvas.height >= CS;
+        out.bigCross = !!hudHit.mapClose && !hudHit.hamburger && !hudHit.minimap && hudHit.mapClose.x > W / 2;
+        const s0 = mapView.sc;
         // Scroll zooms about the pointer: the world point under it stays put.
-        const wx = netView.cx + (W * 0.7 - W / 2) / netView.sc, wy = netView.cy + (H * 0.3 - H / 2) / netView.sc;
+        const wx = mapView.cx + (W * 0.7 - W / 2) / mapView.sc, wy = mapView.cy + (H * 0.3 - H / 2) / mapView.sc;
         canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: -300, clientX: rect.left + W * 0.7, clientY: rect.top + H * 0.3, bubbles: true, cancelable: true }));
-        out.netZoomIn = netView.sc > fit * 1.3;
-        out.netZoomAnchored = Math.abs(netView.cx + (W * 0.7 - W / 2) / netView.sc - wx) < 0.01
-            && Math.abs(netView.cy + (H * 0.3 - H / 2) / netView.sc - wy) < 0.01;
+        out.bigZoomIn = mapView.sc > s0 * 1.3;
+        out.bigZoomAnchored = Math.abs(mapView.cx + (W * 0.7 - W / 2) / mapView.sc - wx) < 0.01
+            && Math.abs(mapView.cy + (H * 0.3 - H / 2) / mapView.sc - wy) < 0.01;
         canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 100000, clientX: rect.left + W / 2, clientY: rect.top + H / 2, bubbles: true, cancelable: true }));
-        out.netZoomLimit = netView.sc >= fit * 0.5 - 1e-9 && netView.sc < fit;
-        // Drag pans: the map follows the finger.
-        const before = [netView.cx, netView.cy];
+        out.bigZoomLimit = Math.abs(mapView.sc - Math.min(bigMapFitScale(W, H), MAP_MAX_SCALE)) < 1e-9;   // out to where it all fits, no further
+        // Drag pans.
+        canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: -900, clientX: rect.left + W / 2, clientY: rect.top + H / 2, bubbles: true, cancelable: true }));
+        const before = [mapView.cx, mapView.cy];
         ptr("pointerdown", 5, 300, 300); ptr("pointermove", 5, 340, 320); ptr("pointerup", 5, 340, 320);
-        out.netPan = netView.cx < before[0] && netView.cy < before[1];
-        // Pinch: two fingers moving apart zoom in.
-        const s0 = netView.sc;
+        out.bigPan = mapView.cx < before[0] && mapView.cy < before[1];
+        // Pinch zooms.
+        const s1 = mapView.sc;
         ptr("pointerdown", 6, 300, 300, "touch"); ptr("pointerdown", 7, 400, 300, "touch");
         ptr("pointermove", 7, 500, 300, "touch");
         ptr("pointerup", 6, 300, 300, "touch"); ptr("pointerup", 7, 500, 300, "touch");
-        out.netPinch = netView.sc > s0 * 1.5;
+        out.bigPinch = mapView.sc > s1 * 1.5 || mapView.sc === MAP_MAX_SCALE;
         await frames();
         // A drag that ends on the cross does not close the map; a plain click on it does.
-        const cr = hudHit.netClose, mid = [cr.x + cr.w / 2, cr.y + cr.h / 2];
+        const cr = hudHit.mapClose, mid = [cr.x + cr.w / 2, cr.y + cr.h / 2];
         ptr("pointerdown", 8, 300, 300); ptr("pointermove", 8, mid[0], mid[1]); ptr("pointerup", 8, mid[0], mid[1]);
         click(cr);
-        out.netDragNoClose = G.showNetwork === true;
+        out.bigDragNoClose = G.showBigMap === true;
         ptr("pointerdown", 9, mid[0], mid[1]); ptr("pointerup", 9, mid[0], mid[1]);
+        const zoomed = mapView.sc;
         click(cr);
-        out.netOff = G.showNetwork === false && !overlayOpen();
-        // Reopening starts from the whole network again; Esc also leaves.
+        out.bigOff = G.showBigMap === false && !overlayOpen();
+        // Reopening is centred on you again, at the zoom you left it at (kept for the session); Esc also leaves.
         await frames();
-        click(hudHit.network);
-        out.netRefit = G.showNetwork === true && Math.abs(netView.sc - fit) < 1e-6 && Math.abs(netView.cx - c0[0]) < 1e-6;
+        click(hudHit.minimapView);
+        out.bigRemembersZoom = G.showBigMap === true && Math.abs(mapView.sc - zoomed) < 1e-9 && Math.abs(mapView.cx - G.x) < 1e-6
+            && +sessionStorage.getItem("gembot-mapzoom") === zoomed;
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-        out.netEsc = G.showNetwork === false;
+        out.bigEsc = G.showBigMap === false;
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
+        out.bigKey = G.showBigMap === true;
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
+        out.bigKeyCloses = G.showBigMap === false;
+        click(hudHit.minimap);                           // minimap off again
         HANDLERS.tick = realTick;
         G.hubs.clear();
+        if (lent) { chunks.delete("0,0"); chunkVersion++; }
+        // The game's zoom is kept for the session.
+        const t0 = tile;
+        zoom(ZOOM_STEP);
+        out.zoomKept = +sessionStorage.getItem("gembot-zoom") === tile && tile !== t0;
+        zoom(-ZOOM_STEP);
         return out;
     });
     for (const [k, what] of [
@@ -402,18 +426,24 @@ function freePort() {
         ["arrowsOff", "clicking the lens again hides them"],
         ["mapOn", "the minimap button shows the minimap"],
         ["mapOff", "clicking it again hides the minimap"],
-        ["netButton", "the network button sits next to the minimap button"],
-        ["netOn", "the network button opens a fullscreen map that stops steering"],
-        ["netCross", "the map has a cross and covers the other buttons"],
-        ["netZoomIn", "scrolling up zooms in"],
-        ["netZoomAnchored", "zoom keeps the point under the pointer in place"],
-        ["netZoomLimit", "zooming out stops at half the fitted scale"],
-        ["netPan", "dragging pans the map"],
-        ["netPinch", "pinching zooms"],
-        ["netDragNoClose", "a drag ending on the cross doesn't close the map"],
-        ["netOff", "the cross leaves the network map"],
-        ["netRefit", "reopening shows the whole network again"],
-        ["netEsc", "Escape leaves the network map"],
+        ["noNetworkButton", "the network button is gone"],
+        ["mapTapTarget", "the minimap itself is a tap target (below its button)"],
+        ["bigOn", "tapping the minimap opens the big map, which stops steering"],
+        ["bigCentred", "the big map opens centred on you"],
+        ["bigTerrain", "the big map draws the loaded floor and rock"],
+        ["bigCross", "the big map has a cross and covers the other buttons"],
+        ["bigZoomIn", "scrolling up zooms in"],
+        ["bigZoomAnchored", "zoom keeps the point under the pointer in place"],
+        ["bigZoomLimit", "zooming out stops when everything fits"],
+        ["bigPan", "dragging pans the map"],
+        ["bigPinch", "pinching zooms"],
+        ["bigDragNoClose", "a drag ending on the cross doesn't close the map"],
+        ["bigOff", "the cross leaves the big map"],
+        ["bigRemembersZoom", "reopening is centred on you at the zoom you left (kept for the session)"],
+        ["bigEsc", "Escape leaves the big map"],
+        ["bigKey", "M opens the big map"],
+        ["bigKeyCloses", "M closes it again"],
+        ["zoomKept", "the game's zoom is kept for the session"],
     ]) check(aids[k] === true, what);
 
     // --- Banking: a "+amount" floats up from the robot and fades; tolls make the score blink ---
