@@ -423,12 +423,14 @@ $("playBtn").addEventListener("click", () => {
 nickEl.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") $("playBtn").click(); });
 $("howBtn").addEventListener("click", () => { menuEl.classList.add("hidden"); openHowto(menuEl); });
 $("backBtn").addEventListener("click", () => {
+    stopHowto();
     howtoEl.classList.add("hidden");
     showScreen(howReturnEl);
 });
 function openHowto(fromEl) {
     howReturnEl = fromEl;
     showScreen(howtoEl);
+    startHowto();
 }
 
 // ---- In-game menu (the game keeps running; your robot just coasts to a stop) ----

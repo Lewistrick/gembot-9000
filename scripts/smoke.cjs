@@ -474,6 +474,72 @@ function freePort() {
     check(taps.menuClosed, "the menu closes");
     check(taps.editor, "tapping your own robot opens the message editor");
 
+    // --- How to Play slideshow: slides, arrows, keys, pictures, markers, the random banked amount ---
+    const how = await a.evaluate(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const out = {};
+        openPause();
+        $("pauseHowBtn").click();
+        await wait(400);                                   // the marker positions load
+        const title = () => document.querySelector("#slide .stitle").textContent;
+        const shown = (id) => !document.getElementById(id).classList.contains("hidden");
+        out.opens = !howtoEl.classList.contains("hidden") && SLIDES.length >= 10;
+        out.first = title() === "You are a GemBot. Your goal is to collect gems." && $("slideCount").textContent.startsWith("1 /");
+        out.firstArrows = shown("slideNext") && !shown("slidePrev");
+        out.firstPicture = !!document.querySelector("#slide img") && document.querySelectorAll("#slide .mk").length >= 2;
+        $("slideNext").click();
+        out.second = title() === "Bring gems to the base to score points." && shown("slidePrev") && shown("slideNext");
+        const amount = document.querySelector("#slide .floatamt").textContent;
+        out.randomAmount = /^\+\d+$/.test(amount) && +amount.slice(1) >= 30 && +amount.slice(1) <= 100;
+        const seen = new Set();
+        for (let i = 0; i < 12; i++) { await wait(2700); seen.add(document.querySelector("#slide .floatamt").textContent); if (seen.size > 1) break; }
+        out.amountChanges = seen.size > 1;
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+        out.third = document.querySelector("#slide .steerbox") !== null && document.querySelectorAll("#slide .steerbox").length === 2
+            && /Keyboard/.test(howtoSlideEl.textContent) && /Phone/.test(howtoSlideEl.textContent);
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+        out.backOne = title().startsWith("Bring gems");
+        // every slide renders, every picture loads, and every marker landed on its picture
+        let broken = [], noMarks = [];
+        for (let i = 0; i < SLIDES.length; i++) {
+            goSlide(i);
+            for (const img of howtoSlideEl.querySelectorAll("img")) {
+                if (!img.complete) await new Promise((r) => { img.onload = img.onerror = r; });
+                if (!img.naturalWidth) broken.push(img.getAttribute("src"));
+            }
+            const wanted = SLIDES[i].imgs ? SLIDES[i].imgs.reduce((n, im) => n + im.marks.length, 0) : 0;
+            const got = howtoSlideEl.querySelectorAll(".mk").length;
+            if (got < wanted * 0.6) noMarks.push(`${i + 1}:${got}/${wanted}`);     // a few may sit off-screen in a picture
+        }
+        out.picturesLoad = broken.length === 0;
+        out.broken = broken.join(",");
+        out.markersPlaced = noMarks.length === 0;
+        out.noMarks = noMarks.join(",");
+        out.lastSlide = !shown("slideNext") && shown("slidePrev") && $("slideCount").textContent.startsWith(`${SLIDES.length} /`);
+        $("slideDots").querySelectorAll("button")[0].click();
+        out.dots = title().startsWith("You are a GemBot");
+        $("backBtn").click();
+        out.backToPause = howtoEl.classList.contains("hidden") && !pauseEl.classList.contains("hidden");
+        $("resumeBtn").click();
+        return out;
+    });
+    for (const [k, what] of [
+        ["opens", "How to Play opens a slideshow"],
+        ["first", "slide 1 is 'You are a GemBot. Your goal is to collect gems.'"],
+        ["firstArrows", "slide 1 has only the right arrow"],
+        ["firstPicture", "slide 1 has a picture with blinking markers"],
+        ["second", "the right arrow leads to slide 2 about banking, with both arrows"],
+        ["randomAmount", "slide 2 floats a random 30-100 amount"],
+        ["amountChanges", "the amount changes each time it floats up"],
+        ["third", "slide 3 shows the steering for keyboard and phone"],
+        ["backOne", "the left arrow key goes back a slide"],
+        ["picturesLoad", `every slide picture loads ${how.broken || ""}`],
+        ["markersPlaced", `every picture gets its markers ${how.noMarks || ""}`],
+        ["lastSlide", "the last slide has only the left arrow"],
+        ["dots", "the dots jump to a slide"],
+        ["backToPause", "Back returns to where How to Play was opened"],
+    ]) check(how[k] === true, what);
+
     // --- Status + leave ---
     const status = await (await fetch(`http://localhost:${PORT}/api/status`)).json();
     check(status.online === 2, `status reports 2 online (got ${status.online})`);

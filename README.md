@@ -17,7 +17,7 @@ or, without Docker (needs [uv](https://docs.astral.sh/uv/)):
 uv run uvicorn app.server:app --port 8004 --reload
 ```
 
-Pick a nickname on the menu and join. The map rotates to follow your heading with a little lag, so the robot swings off "up" while you turn. Steering builds up and eases back instead of snapping.
+Pick a nickname on the menu and join. The map rotates to follow your heading with a little lag, so the robot swings off "up" while you turn. Steering builds up and eases back instead of snapping, and the turn rate falls with speed: sharp at a crawl (3.2 rad/s), wide at top speed (1.6 rad/s, a turn radius of about 9 tiles).
 
 | Input | Keyboard | Touch |
 |---|---|---|
@@ -37,7 +37,8 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
   distance from the base (`value × (1 + distance/150)`), and ten rare **mega gems** (250 each)
   hide 60–400 tiles out; they glow amber on the minimap (which also draws hubs, rails and the base) and mining one is announced.
 - **Score.** Cargo only scores once **delivered to the base**: drive into the dashed ring
-  around the depot, ride in, or ship it. Undelivered cargo is lost at midnight.
+  around the depot, ride in, or ship it. Undelivered cargo is lost at midnight. Banking (driving in or by rail) floats the amount (`+57`)
+  up from your robot in the gems' colour; your score pane **blinks** when tolls come in.
 - **Drilling.** Hold forward straight into a wall and your drill bores out the tile in front:
   about 1 s and **1 point of cargo** per tile, or **free but 3 s per tile with no cargo**, so
   nobody is ever stuck (some days start in a sealed pocket, 3-7 drilled tiles from the open
@@ -93,10 +94,12 @@ app/
   connection.py  # per-client protocol: what each client is sent, and how input is applied
   store.py       # SQLite persistence; the game process is the only writer
   server.py      # FastAPI + websockets, one global 20 Hz loop, day rollover
-  static/        # the client: util, art, world, net, hud, touch, main, ui (+ index.html, style.css)
+  static/        # the client: util, art, world, net, hud, touch, main, howto, ui (+ index.html, style.css)
+  static/howto/  # screenshots + marker positions for the How to Play slideshow (generated)
 scripts/
   loadtest.py    # N bots against a real server: tick time, bandwidth, CPU
-  smoke.cjs      # headless browsers: two players, chat, block, touch steering, rail UI
+  smoke.cjs      # headless browsers: two players, chat, block, touch steering, rail UI, slideshow
+  howto_shots.cjs  # regenerates the How to Play pictures (needs howto_server.py: a real server on a fixed day)
   mockups/       # renders the art (robots, hubs, tracks, base, carts) for review
   validate.py    # layout checks for the three generators
   preview.py     # render a region of a world to a PNG
@@ -132,6 +135,7 @@ ruff check . && ruff format --check .          # lint and format
 uvx ty check                                   # types
 PYTHONPATH=. uv run python scripts/validate.py # generator constraints
 NODE_PATH=/opt/node22/lib/node_modules node scripts/smoke.cjs   # headless-browser smoke test
+NODE_PATH=/opt/node22/lib/node_modules node scripts/howto_shots.cjs   # redo the How to Play pictures after the art or HUD changes
 scripts/reset-day.sh                           # wipe today's board (backs up the DB first); -n previews, -y skips the prompt
 ```
 
