@@ -45,8 +45,11 @@ function drawRubblePile(sx, sy, rng, gem, rock) {
     for (let i = 0; i < count; i++) {
         const a = rng() * TAU, d = rng() * tile * 0.34;
         const px = sx + Math.cos(a) * d, py = sy + Math.sin(a) * d;
-        const pr = tile * (0.05 + rng() * 0.11);   // random sizes
-        const bcol = rng() < 0.5 ? gem : rock;     // gem- or rock-coloured
+        const size = rng(), isGem = rng() < 0.5;
+        const bcol = isGem ? gem : rock;           // gem- or rock-coloured
+        // A mined gem leaves small gem chips among bigger rock chunks; drilled rubble is all rock.
+        const pr = gem === rock ? tile * (0.05 + size * 0.11)
+            : isGem ? tile * (0.03 + size * 0.04) : tile * (0.08 + size * 0.1);
         ctx.fillStyle = css(mix(bcol, [0, 0, 0], 0.15));
         ctx.beginPath(); ctx.arc(px, py, pr, 0, TAU); ctx.fill();
         ctx.fillStyle = css(mix(bcol, [255, 255, 255], 0.3), 0.9);
