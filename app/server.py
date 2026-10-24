@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from collections import deque
 from collections.abc import AsyncGenerator, Callable
@@ -221,9 +222,36 @@ app = FastAPI(title="GemBot 9000", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 
+_ASSET_REF = re.compile(r'(static/[\w./-]+\.(?:js|css))"')
+
+
+def asset_version() -> str:
+    """A short fingerprint of the static files (names, sizes, times).
+
+    It goes into every script and stylesheet URL, so a deploy changes the URLs and
+    browsers (phones above all) fetch the new files instead of mixing in cached ones."""
+    h = hashlib.sha256()
+    for f in sorted(_STATIC.rglob("*")):
+        if f.is_file():
+            st = f.stat()
+            h.update(
+                f"{f.relative_to(_STATIC).as_posix()}:{st.st_size}:{st.st_mtime_ns};".encode()
+            )
+    return h.hexdigest()[:10]
+
+
 @app.get("/", response_class=HTMLResponse)
-async def index() -> str:
-    return (_STATIC / "index.html").read_text(encoding="utf-8")
+async def index() -> HTMLResponse:
+    v = asset_version()
+    page = (_STATIC / "index.html").read_text(encoding="utf-8")
+    page = _ASSET_REF.sub(rf'\1?v={v}"', page)
+    page = page.replace(
+        '<meta charset="utf-8" />',
+        f'<meta charset="utf-8" />\n<meta name="asset-v" content="{v}" />',
+        1,
+    )
+    # The page itself is always revalidated; the files it names change URL when they change.
+    return HTMLResponse(page, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/status")

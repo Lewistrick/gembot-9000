@@ -625,6 +625,321 @@ canvas {
     color: var(--neon);
 }
 
+/* "more below" hint on a slide that doesn't fit */
+.slide.more::after {
+    content: "\25BE  more below";
+    position: sticky;
+    bottom: 0;
+    display: block;
+    margin-top: 4px;
+    padding: 14px 0 2px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--amber);
+    background: linear-gradient(rgba(4, 14, 13, 0), rgba(4, 14, 13, 0.97) 55%);
+    pointer-events: none;
+}
+
+/* Phones held upright: narrower arrows, smaller type, two pictures side by side. */
+@media (max-width: 560px) {
+    #howto {
+        gap: 8px;
+        padding: 10px 6px;
+    }
+
+    .howtitle {
+        font-size: 18px;
+    }
+
+    .slide {
+        width: calc(100vw - 80px);
+        padding: 10px 12px;
+    }
+
+    .stitle {
+        font-size: 16px;
+        margin-bottom: 8px;
+    }
+
+    .slines,
+    .keylist {
+        font-size: 14px;
+        line-height: 1.42;
+    }
+
+    .keylist {
+        gap: 5px;
+    }
+
+    .keylist .kbd {
+        height: 32px;
+        min-width: 34px;
+        padding: 0 7px;
+    }
+
+    .shots {
+        gap: 6px;
+        margin-bottom: 8px;
+    }
+
+    .shots.n2 {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .slidenav {
+        width: 32px;
+        height: 64px;
+        font-size: 16px;
+    }
+
+    .slidenav.left {
+        left: 4px;
+    }
+
+    .slidenav.right {
+        right: 4px;
+    }
+
+    #howto .btn.big {
+        padding: 10px;
+        font-size: 16px;
+    }
+
+    .steer {
+        gap: 10px;
+    }
+
+    .steerbox h3 {
+        margin-bottom: 4px;
+    }
+
+    .steerbox .slines {
+        font-size: 13px;
+        line-height: 1.35;
+    }
+
+    .keys {
+        grid-template-columns: repeat(3, 40px);
+        gap: 4px;
+        margin-bottom: 6px;
+    }
+
+    .keys .kbd {
+        width: 40px;
+        height: 40px;
+        font-size: 17px;
+    }
+
+    .phone {
+        width: min(100%, 220px);
+        margin-bottom: 6px;
+    }
+}
+
+/* Screens wider than tall: the picture on the left, the text on the right, the picture no
+   taller than the screen allows (so a slide fits without scrolling). */
+@media (min-aspect-ratio: 4/3) {
+    .slide {
+        width: min(calc(100vw - 92px), 1000px);
+    }
+
+    .sbody:not(.custom) {
+        display: grid;
+        gap: 16px;
+        align-items: start;
+    }
+
+    /* the picture column is as wide as the screen height allows, the text takes the rest */
+    .sbody.n1 {
+        grid-template-columns: min(58%, calc((100vh - 290px) * 16 / 9)) minmax(0, 1fr);
+        grid-template-columns: min(58%, calc((100dvh - 290px) * 16 / 9)) minmax(0, 1fr);
+    }
+
+    .sbody.n2 {
+        grid-template-columns: min(62%, calc((100vh - 290px) * 32 / 9)) minmax(0, 1fr);
+        grid-template-columns: min(62%, calc((100dvh - 290px) * 32 / 9)) minmax(0, 1fr);
+    }
+
+    .sbody .shots {
+        margin-bottom: 0;
+    }
+
+    .shots.n2 {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .keylist {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 18px;
+    }
+}
+
+/* Phones on their side (wide but low): everything compact, no big title. */
+@media (max-height: 560px) and (orientation: landscape) {
+    #howto {
+        gap: 5px;
+        padding: 6px 6px 6px;
+    }
+
+    .howtitle {
+        display: none;
+    }
+
+    .slide {
+        width: calc(100vw - 84px);
+        padding: 8px 12px;
+    }
+
+    .stitle {
+        font-size: 15px;
+        margin-bottom: 6px;
+    }
+
+    .sbody:not(.custom) {
+        gap: 12px;
+    }
+
+    .sbody.n1 {
+        grid-template-columns: min(58%, calc((100vh - 112px) * 16 / 9)) minmax(0, 1fr);
+        grid-template-columns: min(58%, calc((100dvh - 112px) * 16 / 9)) minmax(0, 1fr);
+    }
+
+    .sbody.n2 {
+        grid-template-columns: min(62%, calc((100vh - 112px) * 32 / 9)) minmax(0, 1fr);
+        grid-template-columns: min(62%, calc((100dvh - 112px) * 32 / 9)) minmax(0, 1fr);
+    }
+
+    .slines,
+    .keylist {
+        font-size: 13px;
+        line-height: 1.36;
+    }
+
+    .keylist {
+        grid-template-columns: 1fr 1fr;
+        gap: 5px 14px;
+    }
+
+    .keylist .kbd {
+        height: 28px;
+        min-width: 32px;
+        padding: 0 6px;
+    }
+
+    .slidenav {
+        width: 34px;
+        height: 60px;
+        font-size: 16px;
+    }
+
+    .slidenav.left {
+        left: 4px;
+    }
+
+    .slidenav.right {
+        right: 4px;
+    }
+
+    .steer {
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .steerbox {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 4px 10px;
+        align-items: center;
+    }
+
+    .steerbox h3 {
+        grid-column: 1 / -1;
+        margin: 0;
+    }
+
+    .steerbox .slines {
+        font-size: 12px;
+        line-height: 1.3;
+    }
+
+    .keys {
+        grid-template-columns: repeat(3, 32px);
+        gap: 3px;
+        margin: 0;
+    }
+
+    .keys .kbd {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+        border-bottom-width: 3px;
+    }
+
+    .kbd small {
+        display: none;
+    }
+
+    .phone {
+        width: 150px;
+        margin: 0;
+    }
+
+    .phone .half,
+    .phone .both {
+        font-size: 9px;
+    }
+
+    .phone .flip {
+        width: 24px;
+        height: 24px;
+        font-size: 14px;
+    }
+
+    .dots {
+        gap: 4px;
+    }
+
+    .dot {
+        width: 8px;
+        height: 8px;
+    }
+
+    #howto .btn.big {
+        padding: 5px;
+        font-size: 14px;
+        width: min(50vw, 300px);
+    }
+}
+
+/* Very low screens (a small phone on its side): tighter still, a bit more room for the text. */
+@media (max-height: 420px) and (orientation: landscape) {
+    .stitle {
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+
+    .slines {
+        font-size: 12px;
+        line-height: 1.3;
+    }
+
+    .slines li {
+        margin-bottom: 1px;
+    }
+
+    .sbody.n1 {
+        grid-template-columns: min(50%, calc((100vh - 104px) * 16 / 9)) minmax(0, 1fr);
+        grid-template-columns: min(50%, calc((100dvh - 104px) * 16 / 9)) minmax(0, 1fr);
+    }
+
+    .sbody.n2 {
+        grid-template-columns: min(52%, calc((100vh - 104px) * 32 / 9)) minmax(0, 1fr);
+        grid-template-columns: min(52%, calc((100dvh - 104px) * 32 / 9)) minmax(0, 1fr);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .mk,
     .kbd.hl,

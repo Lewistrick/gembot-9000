@@ -52,6 +52,10 @@ class Ride:
 
     pts: list[tuple[float, float]]
     i: int = 0
+    ox: float = 0.0  # where the ride started (the hub boarded at)
+    oy: float = 0.0
+    seg: int = -1  # the stretch of track (index into pts) the turn below belongs to
+    h0: float = 0.0  # heading when that stretch began
 
 
 def turn_rate(speed: float) -> float:

@@ -432,6 +432,36 @@ function freePort() {
         ["labelNoScore", "the box never mentions paying from score"],
     ]) check(bank[k] === true, what);
 
+    // --- Camera: follows the robot the short way round, and lazily while riding ---
+    const camTest = await a.evaluate(async () => {
+        const realTick = HANDLERS.tick, saved = { from: camFrom, to: camTo, h: camH, riding: G.riding };
+        HANDLERS.tick = () => {};
+        const out = {};
+        try {
+            const p = robotPose(), at = (h) => { camFrom = camTo = { x: p.x, y: p.y, h }; };
+            const settleFrom = async (start, target, riding, ms) => {
+                G.riding = riding; rodeAt = riding ? performance.now() : -1e9;
+                at(target); camH = start; camHAt = performance.now();
+                await new Promise((r) => setTimeout(r, ms));
+                return camH;
+            };
+            const h1 = await settleFrom(0, Math.PI * 2 - 0.4, false, 150);   // 0.4 rad to the left, written as almost a full turn
+            out.shortWay = h1 < 0 && h1 > -0.41;
+            const driving = await settleFrom(0, 1.0, false, 200), riding = await settleFrom(0, 1.0, true, 200);
+            out.slowWhileRiding = riding > 0.05 && riding < driving * 0.75;
+            const big = await settleFrom(0, 1.6, true, 150), small = await settleFrom(0, 0.2, true, 150);
+            out.fasterWhenFarOff = big > small * 4;
+        } finally {
+            HANDLERS.tick = realTick; camFrom = saved.from; camTo = saved.to; camH = saved.h; G.riding = saved.riding; rodeAt = -1e9;
+        }
+        return out;
+    });
+    for (const [k, what] of [
+        ["shortWay", "the camera turns the short way round"],
+        ["slowWhileRiding", "the camera swings slower while riding"],
+        ["fasterWhenFarOff", "the camera turns faster when it is far off"],
+    ]) check(camTest[k] === true, what);
+
     // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---
     const light = await a.evaluate(async () => {
         const frames = (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
@@ -589,6 +619,45 @@ function freePort() {
     await sleep(500);
     const after = await (await fetch(`http://localhost:${PORT}/api/status`)).json();
     check(after.online === 1, `leaving frees the slot (online=${after.online})`);
+
+    // --- How to Play on phones: arrows at the sides, nothing wider than the screen, slides fit ---
+    for (const [label, vp] of [["phone upright", { width: 390, height: 664 }], ["phone on its side", { width: 750, height: 342 }], ["small phone", { width: 320, height: 480 }]]) {
+        const ctxP = await browser.newContext({ viewport: vp, hasTouch: true, isMobile: true });
+        const p = await ctxP.newPage();
+        watch(p, label);
+        await p.goto(`http://localhost:${PORT}/`);
+        p.versioned = await p.evaluate(() => [...document.scripts].every((s) => /\?v=\w{10}$/.test(s.src))
+            && /\?v=\w{10}$/.test(document.querySelector("link[rel=stylesheet]").href));
+        await p.click("#howBtn");
+        await p.waitForFunction(() => typeof howtoShots !== "undefined" && howtoShots, null, { timeout: 5000 });
+        const lay = await p.evaluate(async () => {
+            const res = { sides: true, wide: 0, overflow: [], hint: true };
+            for (let i = 0; i < SLIDES.length; i++) {
+                goSlide(i);
+                for (const img of howtoSlideEl.querySelectorAll("img")) if (!img.complete) await new Promise((r) => { img.onload = img.onerror = r; });
+                await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+                const sl = howtoSlideEl.getBoundingClientRect(), n = $("slideNext").getBoundingClientRect(), pv = $("slidePrev").getBoundingClientRect();
+                if (i > 0 && !(pv.width && pv.right <= sl.left + 1 && pv.left <= 8)) res.sides = false;
+                if (i < SLIDES.length - 1 && !(n.width && n.left >= sl.right - 1 && n.right >= innerWidth - 8)) res.sides = false;
+                for (const e of document.querySelectorAll("#howto *")) { const b = e.getBoundingClientRect(); if (b.width && (b.right > innerWidth + 1 || b.left < -1)) res.wide++; }
+                const over = howtoSlideEl.scrollHeight - howtoSlideEl.clientHeight;
+                if (over > 6) {
+                    res.overflow.push(i + 1);
+                    if (!howtoSlideEl.classList.contains("more")) res.hint = false;   // a slide that doesn't fit says so
+                }
+            }
+            const back = $("backBtn").getBoundingClientRect();
+            res.backVisible = back.bottom <= innerHeight && back.top >= 0;
+            return res;
+        });
+        check(p.versioned, `${label}: scripts and styles are loaded with a version, so phones never mix in stale files`);
+        check(lay.sides, `${label}: the slide arrows sit on the left and right of the screen, beside the slide`);
+        check(lay.wide === 0, `${label}: nothing on the slides is wider than the screen`);
+        check(lay.backVisible, `${label}: the Back button is on screen`);
+        check(lay.hint, `${label}: a slide that doesn't fit shows a 'more below' hint`);
+        if (label !== "small phone") check(lay.overflow.length === 0, `${label}: every slide fits on the screen${lay.overflow.length ? " (not: " + lay.overflow.join(",") + ")" : ""}`);
+        await ctxP.close();
+    }
 
     check(errors.length === 0, `no JavaScript errors${errors.length ? ": " + errors.join(" | ") : ""}`);
     check(!/Traceback/.test(serverLog), "no server tracebacks");

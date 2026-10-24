@@ -613,8 +613,12 @@ class Game:
             retry = {"action": "ride", "to": to}
             return self._ask_to_pay(player, "Travel tolls", len(tolls), short, retry)
         self._pay_tolls(player, tolls, from_cargo=from_cargo, from_score=short)
+        heading = (
+            player.heading
+        )  # the robot keeps facing where it faced; it turns on the way
         player.place(float(here.x), float(here.y))
-        player.ride = Ride(self.rail.points(route)[1:])
+        player.heading = heading
+        player.ride = Ride(self.rail.points(route)[1:], ox=here.x, oy=here.y)
         player.speed = RIDE_SPEED
         if tolls:
             self._say(player, True, f"Riding. Tolls paid: {len(tolls)}")
@@ -652,14 +656,27 @@ class Game:
         )
 
     def _ride_step(self, player: Player) -> None:
+        """Move a rider along the track, turning it toward the direction of travel.
+
+        Each stretch between two hubs turns the robot from the heading it had when the
+        stretch began to that stretch's direction, eased in and out over its length, so it
+        faces the way it travels by the next hub. A big turn swings faster than a small one."""
         ride = player.ride
         assert ride is not None
+        if (
+            ride.seg != ride.i
+        ):  # a new stretch begins: remember where the turn starts from
+            ride.seg, ride.h0 = ride.i, player.heading
+        sx, sy = ride.pts[ride.i - 1] if ride.i else (ride.ox, ride.oy)
+        tx, ty = ride.pts[ride.i]
+        before = ride.i
         x, y, ride.i = advance(player.x, player.y, ride.pts, ride.i, RIDE_SPEED * TICK)
-        dx, dy = x - player.x, y - player.y
-        if dx or dy:  # swing the heading toward the direction of travel, smoothly
-            want = math.atan2(dx, -dy)
-            diff = (want - player.heading + math.pi) % math.tau - math.pi
-            player.heading += max(-0.3, min(0.3, diff))
+        length = math.hypot(tx - sx, ty - sy)
+        done = length if ride.i > before else math.hypot(x - sx, y - sy)
+        t = 1.0 if length == 0 else min(1.0, done / length)
+        want = math.atan2(tx - sx, -(ty - sy))
+        turn = (want - ride.h0 + math.pi) % math.tau - math.pi  # the short way round
+        player.heading = ride.h0 + turn * t * t * (3 - 2 * t)
         player.x, player.y = x, y
         if ride.i >= len(ride.pts):
             player.ride = None
