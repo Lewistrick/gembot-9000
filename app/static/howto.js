@@ -33,7 +33,7 @@ const SLIDES = [
             { shot: "hubbtn", marks: ["hub:box", "hub:arrow-down"] },
             { shot: "ghosts", marks: ["priceA:box", "priceB:box"] },
         ],
-        lines: ["Stand still and tap <b>HUB</b>.", "It only shows if you can <b>pay</b> for a hub.", "Each see-through track shows its <b>price</b>.", "<b>Tap one</b> to build the hub with that track.", "Tap anywhere else to cancel.", "With only one choice, it is just built."],
+        lines: ["Stand still and tap <b>HUB</b>.", "It only shows if you can <b>pay</b> for a hub.", "Each see-through track shows its <b>length</b> and <b>price</b>.", "<b>Tap one</b> to build the hub with that track.", "The cost floats up from your robot.", "Tap anywhere else to cancel.", "With only one choice, it is just built."],
     },
     {
         title: "Rail rules.",

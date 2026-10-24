@@ -194,6 +194,12 @@ function railModeSegments(mode, cam, ax, ay) {
     return segs;
 }
 
+// What a track offer says: its length in tiles ("m"), its price, and how much of it would come from score.
+function trackLabel(o) {
+    const base = `${Math.round(o.len)}m \u00b7 ${o.cost}`;
+    return o.short > 0 ? `${base} (${o.short} from score)` : base;
+}
+
 function drawRailMode(cam, ax, ay, W, H, now) {
     if (!railMode) return;
     const segs = railModeSegments(railMode, cam, ax, ay);
@@ -203,8 +209,7 @@ function drawRailMode(cam, ax, ay, W, H, now) {
         ART.track(ctx, s.ax, s.ay, s.bx, s.by, tile, 1);
         ctx.restore();
         const o = s.opt, mx = (s.ax + s.bx) / 2, my = (s.ay + s.by) / 2;
-        const label = o.short > 0 ? `${o.cost}  (${o.short} from score)` : `${o.cost}`;
-        pillText(label, mx, my, o.short > 0 ? HUD.amber : "#3ef07a");
+        pillText(trackLabel(o), mx, my, o.short > 0 ? HUD.amber : "#3ef07a");
     }
     ctx.save(); ctx.translate(ax, ay); ctx.rotate(-cam.h);   // the hub that would be built, under your robot
     ART.hub(ctx, 0, 0, tile, accent(G.me.hue), now, true);
@@ -246,7 +251,7 @@ function drawFloats(ax, ay, now, colors) {
         const t = (now - f.t0) / FLOAT_MS, ease = 1 - (1 - t) * (1 - t);
         const y = ay - tile * 1.9 - ease * tile * 2.6;                   // starts above the name tag, drifts up
         ctx.globalAlpha = t < 0.45 ? 1 : 1 - (t - 0.45) / 0.55;           // holds, then fades
-        const str = `+${f.v}`;
+        const str = f.v < 0 ? `\u2212${-f.v}` : `+${f.v}`;      // banked gems rise as +n, what a build cost as \u2212n
         ctx.lineWidth = fs * 0.34; ctx.strokeStyle = "rgba(4,10,14,0.92)"; ctx.strokeText(str, ax, y);
         ctx.shadowColor = colors.gem; ctx.shadowBlur = fs * 0.5;
         ctx.fillStyle = colors.gem; ctx.fillText(str, ax, y);

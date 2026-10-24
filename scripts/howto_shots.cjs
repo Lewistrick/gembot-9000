@@ -169,7 +169,7 @@ const scenes = [
         return { found: [s.px, s.py, s.qx, s.qy] };
     }, async () => {
         const [px, py, qx, qy] = S.last.found, a = sp((px + qx) / 2, (py + qy) / 2), b = sp(px / 2, py / 2);
-        return { priceA: around(a[0], a[1], tile * 1.5, tile * 0.75), priceB: around(b[0], b[1], tile * 1.5, tile * 0.75) };
+        return { priceA: around(a[0], a[1], tile * 2.2, tile * 0.75), priceB: around(b[0], b[1], tile * 2.2, tile * 0.75) };
     }],
     ["travel", () => {
         const s = hubSpot();

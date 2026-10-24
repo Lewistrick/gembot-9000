@@ -48,8 +48,9 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
   ≤ 60 tiles). Each hub has **one outgoing track** and any number of incoming ones, and loops
   are refused, so every linked hub has exactly one way home. Everything is shared.
   To place a hub, stand still on an empty tile and press **HUB** (only shown if you could pay):
-  the tracks it could get are drawn as **transparent tracks** to the nearest hubs with their
-  prices, tapping one builds the hub with that track, tapping anywhere else cancels. With only one
+  the tracks it could get are drawn as **transparent tracks** to the nearest hubs, each labelled with
+  its length and price (`14m · 39`). Tapping one builds the hub with that track (the cost then floats
+  up from your robot as `−39`); tapping anywhere else cancels. With only one
   possible track nothing needs picking: it is just built. A hub never exists without a track.
 - **Hub menu.** Parked on a hub (or the base) you can only **ship** your gems to the base on their
   own cart or switch on **travel mode**, which also turns steering off and stays on until you press TRAVEL again (or drive away

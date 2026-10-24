@@ -379,6 +379,14 @@ function freePort() {
         await new Promise((r) => setTimeout(r, 1900));
         await frames(3);
         out.floatFades = G.floats.length === 0;
+        // A finished build floats what it cost, as a negative amount; track offers show length and price.
+        HANDLERS.built({ v: 39 });
+        out.costFloat = G.floats.length === 1 && G.floats[0].v === -39;
+        await frames(6);
+        out.noCostWithoutAmount = (HANDLERS.built({}), G.floats.length === 1);
+        G.floats.length = 0;
+        out.labelPlain = trackLabel({ len: 13.6, cost: 39, short: 0 }) === "14m \u00b7 39";
+        out.labelShort = trackLabel({ len: 20, cost: 45, short: 15 }) === "20m \u00b7 45 (15 from score)";
         G.toasts.length = 0; G.scoreFlash = 0;
         return out;
     });
@@ -388,6 +396,10 @@ function freePort() {
         ["noBlinkForOwnGems", "banking your own gems doesn't blink the score"],
         ["blink", "a toll makes the score blink"],
         ["floatFades", "the amount fades away"],
+        ["costFloat", "a finished build floats its cost as a negative amount"],
+        ["noCostWithoutAmount", "a build without an amount floats nothing"],
+        ["labelPlain", "a track offer shows its length and price"],
+        ["labelShort", "an offer partly paid from score says how much"],
     ]) check(bank[k] === true, what);
 
     // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---

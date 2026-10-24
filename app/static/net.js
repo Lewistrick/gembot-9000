@@ -228,7 +228,13 @@ const HANDLERS = {
     toll(m) { toast(`+${m.v} toll from ${m.from}`, "#3ef07a", 2500); G.scoreFlash = performance.now(); },
     hubopts(m) { openHubMode(m); },
     pay(m) { openPayDialog(m); },
-    built() { closeRailMode(); },
+    built(m) {
+        closeRailMode();
+        if (m.v) {                          // what it cost floats up from the robot, like banked gems do
+            G.floats.push({ v: -m.v, t0: performance.now() });
+            if (G.floats.length > 6) G.floats.shift();
+        }
+    },
     newday(m) {
         // The server closes the socket next; onclose reconnects us into the new day.
         resetClientWorld();
