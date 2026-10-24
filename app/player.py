@@ -39,6 +39,11 @@ DRILL_COST = 1  # cargo points burned per drilled tile
 DRILL_TIME = 1.0  # seconds per tile when you can pay the cost
 DRILL_TIME_BROKE = 3.0  # seconds per tile with no cargo (free, but slow: never stuck)
 DRILL_HEAD_ON = 0.7  # fraction of the motion that must point into the wall
+
+# Crashing: hitting a wall hard shakes gems out of the cargo (they are lost).
+CRASH_FREE = 0.2  # into-wall speeds up to this fraction of MAX_SPEED cost nothing
+CRASH_MAX_LOSS = 10  # cargo lost hitting a wall head-on at top speed (linear between)
+CRASH_FRESH = 10  # ticks off the wall before the next hit counts as a new crash (0.5 s)
 DRILL_GRACE = 3  # ticks without contact before the progress is forgotten
 
 
@@ -105,6 +110,7 @@ class Player:
     drilled_tile: tuple[int, int] | None = (
         None  # set when a tile finishes; the game takes it
     )
+    since_wall: int = 1_000_000  # ticks since the robot last touched a wall
 
     @property
     def score(self) -> int:
@@ -149,9 +155,21 @@ class Player:
             self.drilled_tile = tile
             self.drill_progress = 0.0
 
+    def _crash(self, into: float) -> None:
+        """Hitting a wall at ``into`` tiles/second (the part of the motion into it) loses cargo."""
+        free = CRASH_FREE * MAX_SPEED
+        if into <= free or self.cargo <= 0:
+            return
+        loss = int(CRASH_MAX_LOSS * min(1.0, (into - free) / (MAX_SPEED - free)) + 0.5)
+        loss = min(loss, self.cargo)
+        if loss > 0:
+            self.cargo -= loss
+            self.notices.append({"t": "crash", "v": loss})
+
     def step(self, world: FloorMap, dt: float = TICK) -> None:
         """Advance the vehicle one physics step: steer, throttle/brake, move."""
         self.drill_gap += 1
+        self.since_wall += 1
         if self.drill_gap > DRILL_GRACE:  # the drill lost the wall: start over
             self.drill_target, self.drill_progress = None, 0.0
         if self.flip_remaining > 0.0:
@@ -216,14 +234,19 @@ class Player:
             bx = by = True
         total = math.hypot(vx, vy) or 1e-9
         into = math.hypot(vx if bx else 0.0, vy if by else 0.0)
-        if self.up and self.flip_remaining == 0.0 and into / total >= DRILL_HEAD_ON:
+        drilling = (
+            self.up and self.flip_remaining == 0.0 and into / total >= DRILL_HEAD_ON
+        )
+        # Only a fresh hit is a crash, not leaning on (or tunnelling into) a wall.
+        if self.since_wall > CRASH_FRESH:
+            self._crash(into)
+        self.since_wall = 0
+        if drilling:
             # Pushing straight into the rock with the throttle held: the drill
             # takes the hit (no bounce) and bores into the tile in front.
             self.speed = 0.0
             self.kx = self.ky = 0.0
-            if (
-                pinched
-            ):  # bore into one of the two rocks: the one more ahead of the robot
+            if pinched:  # bore into one of the two rocks, the one more ahead
                 tx, ty = (nx, cy) if abs(vx) >= abs(vy) else (cx, ny)
             else:
                 tx = nx if bx else cx

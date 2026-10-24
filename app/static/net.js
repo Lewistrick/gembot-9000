@@ -34,6 +34,8 @@ const G = {
     showNetwork: false,        // the fullscreen rail network, north up (never remembered across loads)
     toasts: [],                // { text, color, t0, dur }
     floats: [],                // { v, t0 }: "+amount" texts that float up from the robot when gems are banked
+    chips: [],                 // { x, y, vx, vy, r, t0 }: gems shaken out of the cargo by a crash, scattering (world tiles)
+    crashes: [],               // { v, t0 }: the small "crash -n" pop-ups
     scoreFlash: 0,             // performance.now() of the last toll income: the score blinks for a moment after
     idleUntil: 0,              // performance.now() deadline of the idle warning, or 0
 };
@@ -125,7 +127,7 @@ function otherPos(o, now) {
 // ---- Connecting ----
 function resetClientWorld() {
     clearWorld();
-    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.floats.length = 0; G.scoreFlash = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showNetwork = false; G.lightD = G.dark = 0;
+    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.floats.length = 0; G.chips.length = 0; G.crashes.length = 0; G.scoreFlash = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showNetwork = false; G.lightD = G.dark = 0;
     if (typeof clearRailUi === "function") clearRailUi();
     G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
     haveCam = false;
@@ -253,6 +255,16 @@ const HANDLERS = {
         toast(`+${m.v}${m.mega ? "  MEGA GEM!" : ""}`, m.mega ? HUD.amber : HUD.neon, m.mega ? 4500 : 1800);
         G.floats.push({ v: m.v, t0: performance.now(), gem: true, mega: !!m.mega });   // a gem icon and the amount rise from the robot
         if (G.floats.length > 6) G.floats.shift();
+    },
+    crash(m) {                              // hit a wall hard: gems fly off and are lost
+        const now = performance.now(), n = Math.min(16, 3 + m.v * 2);
+        for (let i = 0; i < n; i++) {
+            const a = Math.random() * Math.PI * 2, sp = 2.5 + Math.random() * 4.5;
+            G.chips.push({ x: G.x, y: G.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 0.06 + Math.random() * 0.07, t0: now });
+        }
+        if (G.chips.length > 64) G.chips.splice(0, G.chips.length - 64);
+        G.crashes.push({ v: m.v, t0: now });
+        if (G.crashes.length > 3) G.crashes.shift();
     },
     delivered(m) {
         toast(`BANKED +${m.v}`, "#3ef07a", 3000);
