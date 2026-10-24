@@ -133,19 +133,25 @@ function pillText(str, x, y, color) {
 const lensTargets = [];   // what the lens pointed at in the last frame (for tests)
 function drawArrows(cam, ax, ay, now) {
     lensTargets.length = 0;
-    if (!G.showArrows) return;
     const cosr = Math.cos(-cam.h), sinr = Math.sin(-cam.h), targets = [];
-    targets.push({ x: 0, y: 0, color: HUD.amber, ring: 2.5 });                         // the base: yellow
-    const gem = nearestGem(cam.x, cam.y);
-    // the nearest gem in its colour; a mega gem white with a gem-coloured glow (amber would look like the base)
-    if (gem) targets.push(gem[2] ? { x: gem[0], y: gem[1], color: "#ffffff", glow: curColors().gem, blur: 12, ring: 2.0, mega: true }
-        : { x: gem[0], y: gem[1], color: curColors().gem, ring: 2.0 });
-    let hub = null, hd = Infinity;
-    for (const h of G.hubs.values()) {
-        const d = Math.hypot(h.x - cam.x, h.y - cam.y);
-        if (d < hd) { hd = d; hub = h; }
+    if (G.showArrows) {
+        targets.push({ x: 0, y: 0, color: HUD.amber, ring: 2.5 });                          // the base: yellow
+        // the nearest gem in its colour; a mega gem white with a gem-coloured glow (amber would look like the base)
+        const gem = nearestGem(cam.x, cam.y);
+        if (gem) targets.push(gem[2] ? { x: gem[0], y: gem[1], color: "#ffffff", glow: curColors().gem, blur: 12, ring: 2.0, mega: true }
+            : { x: gem[0], y: gem[1], color: curColors().gem, ring: 2.0 });
+        let hub = null, hd = Infinity;
+        for (const h of G.hubs.values()) {
+            const d = Math.hypot(h.x - cam.x, h.y - cam.y);
+            if (d < hd) { hd = d; hub = h; }
+        }
+        if (hub) targets.push({ x: hub.x, y: hub.y, color: "#aab2c0", ring: 1.5 });          // the nearest hub: gray
     }
-    if (hub) targets.push({ x: hub.x, y: hub.y, color: "#aab2c0", ring: 1.5 });         // the nearest hub: gray
+    // The player you follow (lens or not): a black arrow with a stripe across it in their colour.
+    if (G.follow && G.followAt) {
+        targets.push({ x: G.followAt[0], y: G.followAt[1], color: "#0b0d10", stripe: accent(G.follow.hue), ring: 3.0, follow: true });
+    }
+    if (!targets.length) return;
     lensTargets.push(...targets);
     ctx.save();
     ctx.lineJoin = "round";
@@ -161,14 +167,22 @@ function drawArrows(cam, ax, ay, now) {
         ctx.lineTo(bx + uy * half, by - ux * half);
         ctx.closePath();
         ctx.fillStyle = t.color; ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = Math.max(2, tile * 0.07);
-        ctx.shadowColor = t.glow || t.color; ctx.shadowBlur = t.blur || 6;
+        ctx.shadowColor = t.stripe || t.glow || t.color; ctx.shadowBlur = t.blur || 6;
         ctx.stroke(); ctx.fill();
         ctx.shadowBlur = 0;
+        if (t.stripe) {                                             // a band across the arrow, in the followed player's colour
+            ctx.save(); ctx.clip();
+            const mx = bx + ux * len * 0.42, my = by + uy * len * 0.42;
+            ctx.beginPath(); ctx.moveTo(mx - uy * half * 1.4, my + ux * half * 1.4); ctx.lineTo(mx + uy * half * 1.4, my - ux * half * 1.4);
+            ctx.strokeStyle = t.stripe; ctx.lineWidth = len * 0.3; ctx.stroke();
+            ctx.restore();
+            ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = Math.max(2, tile * 0.07); ctx.stroke();   // keep the edge on top
+        }
         const fs = Math.max(10, tile * 0.34), lx = bx + ux * (len + fs * 0.9), ly = by + uy * (len + fs * 0.9);
         ctx.font = `bold ${fs}px ${HUD.font}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.lineWidth = Math.max(2, fs * 0.25); ctx.strokeStyle = "rgba(0,0,0,0.75)";
         ctx.strokeText(String(Math.round(tiles)), lx, ly);
-        ctx.fillStyle = t.color; ctx.fillText(String(Math.round(tiles)), lx, ly);
+        ctx.fillStyle = t.stripe || t.color; ctx.fillText(String(Math.round(tiles)), lx, ly);
     }
     ctx.restore();
 }

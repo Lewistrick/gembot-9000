@@ -53,7 +53,7 @@ function toggleBlock(id) {
 // ---- Players panel: robots near you, and today's top 10 ----
 function playersPanelOpen() { return !playersEl.classList.contains("hidden"); }
 
-function playerRow(id, name, extra, chat) {
+function playerRow(id, name, extra, chat, idle) {
     const row = document.createElement("div");
     row.className = "prow";
     const info = document.createElement("div");
@@ -65,6 +65,12 @@ function playerRow(id, name, extra, chat) {
     if (chat) { const ch = document.createElement("div"); ch.className = "pchat"; ch.textContent = chat; info.append(ch); }
     row.append(info);
     if (G.me && id !== G.me.id) {
+        const f = document.createElement("button"), on = followingId() === id;
+        f.className = "pblock" + (on ? " on" : "");
+        f.textContent = on ? "Unfollow" : idle ? "Inactive" : "Follow";
+        f.disabled = !on && !!idle;                        // inactive players can't be followed
+        f.addEventListener("click", () => toggleFollow(id));
+        row.append(f);
         const b = document.createElement("button");
         b.className = "pblock" + (blocked.has(id) ? " on" : "");
         b.textContent = blocked.has(id) ? "Unblock" : "Block";
@@ -81,7 +87,7 @@ function refreshPlayersPanel() {
     const rows = [];
     for (const num of G.others.keys()) { const m = G.meta.get(num); if (m) rows.push(m); }
     rows.sort((a, b) => a.name.localeCompare(b.name));
-    for (const m of rows) near.append(playerRow(m.id, m.name, "", m.chat));
+    for (const m of rows) near.append(playerRow(m.id, m.name, m.idle ? "inactive" : "", m.chat, m.idle));
     if (!rows.length) near.textContent = "Nobody in view.";
     G.top.forEach((r, i) => top.append(playerRow(r.id, r.n, `#${i + 1}  ${r.s}`, "")));
     if (!G.top.length) top.textContent = "No scores yet.";
@@ -346,14 +352,24 @@ $("payYes").addEventListener("click", () => {
 });
 $("payNo").addEventListener("click", closePayDialog);
 
-// -- Player menu: tap another robot to see what it says and block it --
-let pmId = null;
+// -- Following one other player: an arrow on your screen points at them --
+function followingId() { return G.follow ? G.follow.id : null; }
+function toggleFollow(id) {
+    send({ action: "follow", id: followingId() === id ? null : id });   // the server answers with a "following" notice
+}
+
+// -- Player menu: tap another robot to see what it says, follow it or block it --
+let pmId = null, pmIdle = false;
 function refreshPlayerMenu() {
     const blockedNow = pmId !== null && blocked.has(pmId);
     $("pmBlock").textContent = blockedNow ? "Unblock chat" : "Block chat";
+    const on = pmId !== null && followingId() === pmId;
+    $("pmFollow").textContent = on ? "Unfollow" : pmIdle ? "Inactive" : "Follow";
+    $("pmFollow").disabled = !on && pmIdle;           // inactive players can't be followed
 }
 function openPlayerMenu(meta) {
     pmId = meta.id;
+    pmIdle = !!meta.idle;
     $("pmName").textContent = (meta.crown ? "\u265B " : "") + meta.name;
     $("pmChat").textContent = meta.chat ? `\u201C${meta.chat}\u201D` : "(no message)";
     refreshPlayerMenu();
@@ -367,6 +383,7 @@ function closePlayerMenu() {
     sendControls(true);
 }
 $("pmBlock").addEventListener("click", () => { if (pmId !== null) { toggleBlock(pmId); refreshPlayerMenu(); } });
+$("pmFollow").addEventListener("click", () => { if (pmId !== null) toggleFollow(pmId); });
 $("pmClose").addEventListener("click", closePlayerMenu);
 
 // Robots drawn this frame as tap targets (filled by main.js): tap yours to edit your

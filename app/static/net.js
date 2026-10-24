@@ -34,6 +34,8 @@ const G = {
     showBigMap: false,         // the big map: the minimap fullscreen, north up (never remembered across loads)
     toasts: [],                // { text, color, t0, dur }
     floats: [],                // { v, t0 }: "+amount" texts that float up from the robot when gems are banked
+    follow: null,              // { id, name, hue } of the player you follow, or null
+    followAt: null,            // [x, y] where they are (from the tick), or null
     chips: [],                 // { x, y, vx, vy, r, t0 }: gems shaken out of the cargo by a crash, scattering (world tiles)
     crashes: [],               // { v, t0 }: the small "crash -n" pop-ups
     scoreFlash: 0,             // performance.now() of the last toll income: the score blinks for a moment after
@@ -127,7 +129,7 @@ function otherPos(o, now) {
 // ---- Connecting ----
 function resetClientWorld() {
     clearWorld();
-    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.floats.length = 0; G.chips.length = 0; G.crashes.length = 0; G.scoreFlash = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showBigMap = false; G.lightD = G.dark = 0;
+    G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.floats.length = 0; G.follow = G.followAt = null; G.chips.length = 0; G.crashes.length = 0; G.scoreFlash = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showBigMap = false; G.lightD = G.dark = 0;
     if (typeof clearRailUi === "function") clearRailUi();
     G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
     haveCam = false;
@@ -201,6 +203,7 @@ const HANDLERS = {
         haveCam = true;
         G.x = m.x; G.y = m.y; G.h = m.h; G.speed = m.s;
         G.cargo = m.c; G.score = m.sc; G.flipping = m.f; G.riding = !!m.r; G.drill = m.d || 0;
+        G.followAt = m.fw || null;
         if (m.b) { G.bump = m.b; onBump(m.b); }
         if (m.o) {
             const now = performance.now(), seen = new Set();
@@ -257,6 +260,21 @@ const HANDLERS = {
         G.floats.push({ v: m.v, t0: performance.now(), gem: true, mega: !!m.mega });   // a gem icon and the amount rise from the robot
         if (G.floats.length > 6) G.floats.shift();
     },
+    following(m) {                          // the server's answer to following someone (or the end of it)
+        const was = G.follow;
+        if (m.id) {
+            G.follow = { id: m.id, name: m.name, hue: m.hue };
+            toast(`Following ${m.name}: the striped arrow points at them.`, HUD.neon, 3500);
+        } else {
+            G.follow = null; G.followAt = null;
+            if (m.why === "inactive") toast(was ? `${m.name} went inactive: you stopped following.` : `${m.name} is inactive and can't be followed.`, HUD.amber, 3500);
+            else if (m.why === "gone") toast(`${m.name || "They"} left the mine: you stopped following.`, HUD.amber, 3500);
+            else if (was) toast(`You stopped following ${was.name}.`, HUD.dim, 2500);
+        }
+        if (typeof refreshPlayerMenu === "function") refreshPlayerMenu();
+        if (typeof refreshPlayersPanel === "function") refreshPlayersPanel();
+    },
+    followed(m) { toast(`${m.by} is following you.`, "#3ef07a", 4000); },
     crash(m) {                              // hit a wall hard: gems fly off and are lost
         const now = performance.now(), n = Math.min(16, 3 + m.v * 2);
         for (let i = 0; i < n; i++) {

@@ -63,6 +63,11 @@ class Ride:
     h0: float = 0.0  # heading when that stretch began
 
 
+def hue_for(num: int) -> int:
+    """A well-spread accent hue (degrees) for the player with this number."""
+    return int(num * 137.508) % 360
+
+
 def turn_rate(speed: float) -> float:
     """Radians/second available when steering at ``speed`` (tiles/second)."""
     return STEER_SLOW + (STEER_FAST - STEER_SLOW) * _clamp(speed / MAX_SPEED, 0.0, 1.0)
@@ -111,6 +116,8 @@ class Player:
         None  # set when a tile finishes; the game takes it
     )
     since_wall: int = 1_000_000  # ticks since the robot last touched a wall
+    follow: str | None = None  # pid of the player followed (an arrow points there)
+    inactive: bool = False  # no input for a while: others can't follow this one
 
     @property
     def score(self) -> int:

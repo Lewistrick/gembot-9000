@@ -29,7 +29,7 @@ import math
 
 from .game import LIGHT_DARK, LIGHT_DIM, LIGHT_LOST, LIGHT_WARN, MAX_PLAYERS, Game, Row
 from .grid import BASE_RADIUS, CHUNK
-from .player import MAX_SPEED, TICK, Player
+from .player import MAX_SPEED, TICK, Player, hue_for
 from .rail import HUB_COST, MAX_TRACK
 
 VIEW_MIN = 9
@@ -37,11 +37,6 @@ VIEW_MAX = 81  # tiles; caps how much of the world a client can ask for
 NEAR_PAD = 4  # extra tiles around the view in which other robots are sent
 CHUNK_MARGIN = CHUNK  # prefetch one chunk beyond the view
 FORGET_MARGIN = 2  # chunks beyond the wanted range before the server says "drop"
-
-
-def hue_for(num: int) -> int:
-    """A well-spread accent hue (degrees) for the player with this number."""
-    return int(num * 137.508) % 360
 
 
 def dump_tick(tick: dict) -> str:
@@ -153,6 +148,12 @@ class Connection:
                 g.ride(pid, to, _flag(msg, "pay_score"))
         elif action == "send_cargo":
             g.send_cargo(pid)
+        elif action == "follow":
+            target = msg.get("id")
+            g.follow(
+                pid,
+                target if isinstance(target, str) and 0 < len(target) <= 32 else None,
+            )
 
     # ------------------------------------------------------------------ #
     def _chunk_range(self, margin: int) -> tuple[int, int, int, int]:
@@ -289,6 +290,7 @@ class Connection:
                             "chat": q.chat,
                             "hue": hue_for(q.num),
                             "crown": q.pid == g.crown_pid,
+                            "idle": q.inactive,
                         }
                     )
             if metas:
@@ -328,6 +330,15 @@ class Connection:
         }
         if p.drilling:
             tick["d"] = round(p.drill_progress, 2)  # drill progress 0..1 for the HUD
+        if (
+            p.follow is not None
+            and (t := g.players.get(p.follow)) is not None
+            and t.in_world
+        ):
+            tick["fw"] = [
+                round(t.x, 1),
+                round(t.y, 1),
+            ]  # where the player you follow is, near or far
         if update:  # other robots update at 10 Hz
             tick["o"] = [g.row(q) for q in near]
             tick["k"] = [

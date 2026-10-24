@@ -630,6 +630,58 @@ function freePort() {
     check(taps.menuClosed, "the menu closes");
     check(taps.editor, "tapping your own robot opens the message editor");
 
+    // --- Following: Ann follows Bob from his menu; Bob is told; Ann gets a striped arrow to him ---
+    await b.evaluate(() => { G.toasts.length = 0; });
+    const fol = await a.evaluate(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const out = {};
+        let bob = null;
+        for (let i = 0; i < 40 && !bob; i++) { bob = [...G.meta.values()].find((m) => m.name === "Bob"); if (!bob) await wait(100); }
+        if (!bob) return out;
+        openPlayerMenu(bob);
+        out.button = $("pmFollow").textContent === "Follow" && !$("pmFollow").disabled;
+        $("pmFollow").click();
+        for (let i = 0; i < 30 && !(G.follow && G.followAt); i++) await wait(100);
+        out.following = !!G.follow && G.follow.id === bob.id && G.follow.name === "Bob" && Array.isArray(G.followAt);
+        out.unfollowLabel = $("pmFollow").textContent === "Unfollow";
+        closePlayerMenu();
+        G.showArrows = false;
+        await wait(200);
+        // Bob may be right next to Ann; move the arrow's target away so it is drawn.
+        const real = G.followAt;
+        G.followAt = [G.x + 30, G.y];
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const t = lensTargets.find((x) => x.follow);
+        out.arrow = !!t && t.color === "#0b0d10" && t.stripe === accent(G.follow.hue) && lensTargets.length === 1;   // without the lens: only this one
+        G.followAt = real;
+        // Unfollow from the players panel.
+        togglePlayersPanel();
+        const btn = [...document.querySelectorAll("#nearList .prow")].find((r) => r.textContent.includes("Bob"));
+        const f = btn && [...btn.querySelectorAll("button")].find((x) => x.textContent === "Unfollow");
+        if (f) f.click();
+        for (let i = 0; i < 30 && G.follow; i++) await wait(100);
+        out.stopped = !G.follow && !G.followAt && !!f;
+        togglePlayersPanel();
+        // An inactive player can't be followed: the button says so.
+        openPlayerMenu(Object.assign({}, bob, { idle: true }));
+        out.inactive = $("pmFollow").disabled && $("pmFollow").textContent === "Inactive";
+        closePlayerMenu();
+        return out;
+    });
+    const told = await b.evaluate(async () => {
+        for (let i = 0; i < 30; i++) { if (G.toasts.some((t) => t.text === "Ann is following you.")) return true; await new Promise((r) => setTimeout(r, 100)); }
+        return false;
+    });
+    for (const [k, what] of [
+        ["button", "another player's menu has a Follow button"],
+        ["following", "Follow follows them, and the server says where they are"],
+        ["unfollowLabel", "the button then says Unfollow"],
+        ["arrow", "a black arrow with a stripe in their colour points at them (also without the lens)"],
+        ["stopped", "Unfollow in the players list stops it"],
+        ["inactive", "an inactive player can't be followed"],
+    ]) check(fol[k] === true, what);
+    check(told, "the followed player is told who follows them");
+
     // --- How to Play slideshow: slides, arrows, keys, pictures, markers, the random banked amount ---
     const how = await a.evaluate(async () => {
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
