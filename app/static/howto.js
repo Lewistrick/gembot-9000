@@ -66,7 +66,7 @@ const SLIDES = [
     },
     {
         title: "All rails lead home.",
-        imgs: [{ shot: "network", marks: ["base:ring"] }],
+        imgs: [{ shot: "bigmap", marks: ["base:ring"] }],
         lines: ["Every hub has <b>one track</b> leading home.", "So all hubs connect to the <b>base</b>.", "Everything is <b>shared</b> by all players."],
     },
     {
@@ -106,13 +106,13 @@ const SLIDES = [
     },
     {
         title: "Find your way.",
-        imgs: [{ shot: "aids", marks: ["lens:box", "map:box", "network:box"] }],
-        lines: ["The <b>lens</b> shows arrows to the base, the nearest gem and the nearest hub.", "The <b>map</b> shows a minimap around you.", "The <b>network</b> button shows all the rails."],
+        imgs: [{ shot: "aids", marks: ["lens:box", "map:box", "minimap:box"] }],
+        lines: ["The <b>lens</b> shows arrows to the base, the nearest gem and the nearest hub.", "The <b>map</b> button shows a minimap around you.", "<b>Tap the minimap</b> for the big map."],
     },
     {
-        title: "The rail network.",
-        imgs: [{ shot: "network", marks: ["you:ring", "base:ring", "cross:box"] }],
-        lines: ["North is up. <b>You</b> and the <b>base</b> are marked.", "<b>Drag</b> to pan. <b>Scroll</b> or <b>pinch</b> to zoom.", "Leave with the <b>cross</b>."],
+        title: "The big map.",
+        imgs: [{ shot: "bigmap", marks: ["you:ring", "base:ring", "cross:box"] }],
+        lines: ["North is up. The <b>base</b> and <b>you</b> blink.", "<b>Drag</b> to pan. <b>Scroll</b> or <b>pinch</b> to zoom.", "Leave with the <b>cross</b> (or Esc)."],
     },
     {
         title: "Chat.",
@@ -193,6 +193,7 @@ function keysSlide() {
         ${row("B", "place a <b>hub</b>")}
         ${row("T", "<b>travel</b> mode on / off")}
         ${row("G", "<b>ship</b> cargo home")}
+        ${row("M", "the big <b>map</b>")}
         ${row("Space", "turn around")}
         ${row("Enter", "<b>chat</b>")}
         ${row("Tab", "<b>players</b> list")}

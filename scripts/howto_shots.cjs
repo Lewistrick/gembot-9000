@@ -63,7 +63,7 @@ function installHelpers() {
         G.hubs.clear(); G.others.clear(); G.toasts.length = 0; G.floats.length = 0;
         for (const k of [...G.meta.keys()]) if (G.me && k !== G.me.num) G.meta.delete(k);
         G.cargo = 0; G.score = 0; G.rank = null; G.drill = 0; G.speed = 0; G.dark = 0; G.lightD = 0;
-        G.light = [100, 250, 350]; G.showArrows = G.showMap = G.showNetwork = false;
+        G.light = [100, 250, 350]; G.showArrows = G.showMap = G.showBigMap = false;
         G.idleUntil = 0; G.mult = 1; G.leftAt = 0; G.riding = false; G.flipping = false; G.bump = 0;
         travelMode = false; railMode = null; wasDark = false; warnedFar = false;
         payBarEl.classList.add("hidden");
@@ -216,19 +216,22 @@ const scenes = [
         G.hubs.set(1, { id: 1, x: s.qx, y: s.qy, bn: 2, out: 0 });
         G.showArrows = true; G.showMap = true;
         return { found: [s.px, s.py] };
-    }, async () => ({ lens: hud("lens"), map: hud("minimap"), network: hud("network"), robot: robot(2.6) })],
-    ["network", () => {
-        const spots = [[40, -20, 0], [80, 10, 1], [70, -60, 1], [-50, 30, 0], [-90, 70, 4], [10, 90, 0]];
-        spots.forEach(([x, y, out], i) => G.hubs.set(i + 1, { id: i + 1, x, y, bn: i % 2 ? 2 : G.me.num, out }));
-        G.x = 80; G.y = 10; G.h = 0.9;
+    }, async () => ({ lens: hud("lens"), map: hud("minimap"), minimap: hud("minimapView"), robot: robot(2.6) })],
+    ["bigmap", () => {
+        const s = hubSpot();
+        pose(s.px, s.py, heading(s.px, s.py, s.qx, s.qy));
+        G.hubs.set(1, { id: 1, x: s.px, y: s.py, bn: G.me.num, out: 0 });
+        G.hubs.set(2, { id: 2, x: s.qx, y: s.qy, bn: 2, out: 1 });
+        G.showMap = true;
         const r = canvas.getBoundingClientRect();
-        fitNetwork(r.width, r.height);
-        G.showNetwork = true;
+        mapView.sc = 4.5;
+        centreBigMap(r.width, r.height);
+        G.showBigMap = true;
         return {};
     }, async () => {
-        const r = canvas.getBoundingClientRect(), at = (x, y) => [r.width / 2 + (x - netView.cx) * netView.sc, r.height / 2 + (y - netView.cy) * netView.sc];
-        const you = at(G.x, G.y), base = at(0, 0);
-        return { cross: hud("netClose"), you: around(you[0], you[1], 26, 26), base: around(base[0], base[1], 30, 30) };
+        const r = canvas.getBoundingClientRect(), at = (x, y) => [r.width / 2 + (x - mapView.cx) * mapView.sc, r.height / 2 + (y - mapView.cy) * mapView.sc];
+        const you = at(G.x, G.y), base = at(0, 0), br = Math.max(16, G.baseR * mapView.sc) + 6;
+        return { cross: hud("mapClose"), you: around(you[0], you[1], 24, 24), base: around(base[0], base[1], br, br) };
     }],
     ["chat", () => {
         const s = hubSpot();

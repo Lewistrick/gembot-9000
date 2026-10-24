@@ -188,12 +188,6 @@ function drawSquareButton(x, y, s, kind, on) {
         ctx.beginPath();
         ctx.moveTo(cx - s * 0.22, cy - s * 0.22); ctx.lineTo(cx + s * 0.22, cy + s * 0.22);
         ctx.moveTo(cx + s * 0.22, cy - s * 0.22); ctx.lineTo(cx - s * 0.22, cy + s * 0.22); ctx.stroke();
-    } else if (kind === "network") {               // the rail network: linked nodes
-        const nodes = [[-0.26, 0.2], [0.02, -0.24], [0.28, 0.18]];
-        ctx.lineWidth = Math.max(1.5, s * 0.05);
-        ctx.beginPath(); ctx.moveTo(cx + nodes[0][0] * s, cy + nodes[0][1] * s);
-        ctx.lineTo(cx + nodes[1][0] * s, cy + nodes[1][1] * s); ctx.lineTo(cx + nodes[2][0] * s, cy + nodes[2][1] * s); ctx.stroke();
-        for (const [nx, ny] of nodes) ctx.fillRect(cx + nx * s - s * 0.07, cy + ny * s - s * 0.07, s * 0.14, s * 0.14);
     } else {                                       // a minimap: a round radar with a blip
         ctx.beginPath(); ctx.arc(cx, cy, s * 0.28, 0, TAU); ctx.stroke();
         ctx.lineWidth = Math.max(1, s * 0.04);
@@ -266,102 +260,154 @@ function drawMinimap(cam, x, y, size) {
     ctx.stroke(); ctx.shadowBlur = 0;
 }
 
-// ---- The network screen: the whole rail network, fullscreen and north up, with pan and zoom ----
-const netView = { cx: 0, cy: 0, sc: 1 };       // world point at the screen centre, and px per tile
-const NET_MAX_SCALE = 40;
+// ---- The big map: the minimap fullscreen and north up (tap the minimap), with pan and zoom ----
+const mapView = { cx: 0, cy: 0, sc: 0 };       // world point at the screen centre, and px per tile (0: not chosen yet)
+const MAP_MAX_SCALE = 40;
+let bigMapTiles = null, bigMapKey = "";        // floor/rock of every loaded chunk, one pixel per tile (rebuilt when terrain changes)
 
-function networkBounds() {                      // everything that matters: the base, you and every hub
+function loadedBounds() {                       // tiles of the loaded chunks (null if none yet)
+    let c0 = Infinity, c1 = -Infinity, r0 = Infinity, r1 = -Infinity;
+    for (const c of chunks.values()) { c0 = Math.min(c0, c.cx); c1 = Math.max(c1, c.cx); r0 = Math.min(r0, c.cy); r1 = Math.max(r1, c.cy); }
+    return c0 === Infinity ? null : [c0 * CS, r0 * CS, (c1 + 1) * CS - 1, (r1 + 1) * CS - 1];
+}
+function bigMapBounds() {                       // what the map can show: the loaded terrain, the base, you and every hub
     let x0 = Math.min(0, G.x), x1 = Math.max(0, G.x), y0 = Math.min(0, G.y), y1 = Math.max(0, G.y);
+    const lb = loadedBounds();
+    if (lb) { x0 = Math.min(x0, lb[0]); y0 = Math.min(y0, lb[1]); x1 = Math.max(x1, lb[2]); y1 = Math.max(y1, lb[3]); }
     for (const h of G.hubs.values()) { x0 = Math.min(x0, h.x); x1 = Math.max(x1, h.x); y0 = Math.min(y0, h.y); y1 = Math.max(y1, h.y); }
     return [x0, y0, x1, y1];
 }
-function networkFitScale(W, H) {                // the scale at which all of it fits on screen
-    const [x0, y0, x1, y1] = networkBounds(), pad = Math.min(W, H) * 0.16;
-    return Math.min((W - 2 * pad) / Math.max(12, x1 - x0), (H - 2 * pad) / Math.max(12, y1 - y0));
+function bigMapFitScale(W, H) {                 // the scale at which all of it fits on screen
+    const [x0, y0, x1, y1] = bigMapBounds();
+    return Math.min(W / Math.max(12, x1 - x0 + 4), H / Math.max(12, y1 - y0 + 4));
 }
-function fitNetwork(W, H) {
-    const [x0, y0, x1, y1] = networkBounds();
-    netView.cx = (x0 + x1) / 2; netView.cy = (y0 + y1) / 2;
-    netView.sc = clamp(networkFitScale(W, H), 0.05, 14);
+function clampMapView(W, H) {                   // keep the view on the map
+    const [x0, y0, x1, y1] = bigMapBounds();
+    mapView.sc = clamp(mapView.sc, Math.min(bigMapFitScale(W, H), MAP_MAX_SCALE), MAP_MAX_SCALE);
+    mapView.cx = clamp(mapView.cx, x0 - 10, x1 + 10);
+    mapView.cy = clamp(mapView.cy, y0 - 10, y1 + 10);
 }
-function clampNetView(W, H) {                   // keep the view near the network
-    const [x0, y0, x1, y1] = networkBounds();
-    netView.sc = clamp(netView.sc, Math.min(0.5 * networkFitScale(W, H), NET_MAX_SCALE), NET_MAX_SCALE);
-    netView.cx = clamp(netView.cx, x0 - 30, x1 + 30);
-    netView.cy = clamp(netView.cy, y0 - 30, y1 + 30);
+function centreBigMap(W, H) {                   // open on you, at the zoom you used last (or about 90 tiles across)
+    mapView.cx = G.x; mapView.cy = G.y;
+    if (!mapView.sc) mapView.sc = Math.min(W, H) / 90;
+    clampMapView(W, H);
 }
-function netPan(dx, dy, W, H) {                 // drag by (dx, dy) screen px
-    netView.cx -= dx / netView.sc; netView.cy -= dy / netView.sc;
-    clampNetView(W, H);
+function mapPan(dx, dy, W, H) {                 // drag by (dx, dy) screen px
+    mapView.cx -= dx / mapView.sc; mapView.cy -= dy / mapView.sc;
+    clampMapView(W, H);
 }
-function netZoomAt(px, py, factor, W, H) {      // zoom keeping the world point under (px, py) in place
-    const wx = netView.cx + (px - W / 2) / netView.sc, wy = netView.cy + (py - H / 2) / netView.sc;
-    netView.sc *= factor;
-    clampNetView(W, H);
-    netView.cx = wx - (px - W / 2) / netView.sc; netView.cy = wy - (py - H / 2) / netView.sc;
-    clampNetView(W, H);
+function mapZoomAt(px, py, factor, W, H) {      // zoom keeping the world point under (px, py) in place
+    const wx = mapView.cx + (px - W / 2) / mapView.sc, wy = mapView.cy + (py - H / 2) / mapView.sc;
+    mapView.sc *= factor;
+    clampMapView(W, H);
+    mapView.cx = wx - (px - W / 2) / mapView.sc; mapView.cy = wy - (py - H / 2) / mapView.sc;
+    clampMapView(W, H);
 }
 
-function drawNetworkScreen(W, H) {
+// The terrain picture: every loaded tile as one pixel, floor and rock in the minimap's colours.
+function bigMapTerrain(colors) {
+    const lb = loadedBounds();
+    if (!lb) return null;
+    const key = `${chunkVersion}|${lb.join(",")}|${colors.floor}|${colors.rock}`;
+    if (bigMapTiles && key === bigMapKey) return bigMapTiles;
+    const [x0, y0, x1, y1] = lb, w = x1 - x0 + 1, h = y1 - y0 + 1;
+    const cv = bigMapTiles && bigMapTiles.canvas.width === w && bigMapTiles.canvas.height === h ? bigMapTiles.canvas : document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const g = cv.getContext("2d"), img = g.createImageData(w, h), d = img.data;
+    const fl = hexRgb(colors.floor), rk = hexRgb(colors.rock);
+    for (const c of chunks.values()) {
+        for (let j = 0; j < CS; j++) {
+            for (let i = 0; i < CS; i++) {
+                const x = c.cx * CS + i, y = c.cy * CS + j, k = ((y - y0) * w + (x - x0)) * 4;
+                const col = isFloor(x, y) ? fl : rk;
+                d[k] = col[0]; d[k + 1] = col[1]; d[k + 2] = col[2]; d[k + 3] = 255;
+            }
+        }
+    }
+    g.putImageData(img, 0, 0);
+    bigMapTiles = { canvas: cv, x0, y0 };
+    bigMapKey = key;
+    return bigMapTiles;
+}
+
+function drawBigMap(W, H) {
     const S = Math.min(W, H), M = Math.max(8, S * 0.028), topH = Math.max(30, Math.min(58, S * 0.085));
-    const sc = netView.sc;
-    const at = (wx, wy) => [W / 2 + (wx - netView.cx) * sc, H / 2 + (wy - netView.cy) * sc];
+    const sc = mapView.sc, colors = curColors(), now = performance.now();
+    const at = (wx, wy) => [W / 2 + (wx - mapView.cx) * sc, H / 2 + (wy - mapView.cy) * sc];
 
     ctx.save();
-    ctx.fillStyle = "rgba(4,12,12,0.96)"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#05080a"; ctx.fillRect(0, 0, W, H);                   // not explored yet
+    const terrain = bigMapTerrain(colors);
+    if (terrain) {
+        const [tx, ty] = at(terrain.x0 - 0.5, terrain.y0 - 0.5);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(terrain.canvas, tx, ty, terrain.canvas.width * sc, terrain.canvas.height * sc);
+        ctx.imageSmoothingEnabled = true;
+    }
     ctx.lineCap = "round";
-    for (const h of G.hubs.values()) {                                      // rails
+    for (const h of G.hubs.values()) {                                      // rails, as on the minimap
         const to = h.out >= 0 ? hubPos(h.out) : null;
         if (!to) continue;
         const [ax, ay] = at(h.x, h.y), [bx, by] = at(to[0], to[1]);
         ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
-        ctx.strokeStyle = "rgba(20,24,30,0.9)"; ctx.lineWidth = 5; ctx.stroke();
-        ctx.strokeStyle = "#c4ccd8"; ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.strokeStyle = "rgba(20,24,30,0.9)"; ctx.lineWidth = clamp(sc * 0.9, 3, 12); ctx.stroke();
+        ctx.strokeStyle = "#c4ccd8"; ctx.lineWidth = clamp(sc * 0.45, 1.5, 6); ctx.stroke();
     }
-    for (const h of G.hubs.values()) {                                      // hubs, in their builder's colour
-        const [hx, hy] = at(h.x, h.y), hs = clamp(sc * 1.6, 7, 16);
-        ctx.fillStyle = hubAccent(h.bn); ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.lineWidth = 1.5;
-        ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs); ctx.strokeRect(hx - hs / 2, hy - hs / 2, hs, hs);
+    const dot = clamp(sc * 0.45, 1.6, 9);
+    for (const c of chunks.values()) {                                      // gems left to mine
+        for (const g of c.gems) {
+            const key = g[0] + "," + g[1];
+            if (mined.has(key)) continue;
+            const [mx, my] = at(g[0], g[1]);
+            if (mx < -20 || my < -20 || mx > W + 20 || my > H + 20) continue;
+            const mega = c.mega.has(key);
+            ctx.fillStyle = mega ? "#ffd64d" : colors.gem; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(mx, my, mega ? dot * 1.6 : dot, 0, TAU); ctx.fill(); ctx.stroke();
+        }
     }
-    const fs = clamp(S * 0.03, 11, 18);
-    const label = (str, px, py, color, dy) => {                             // outlined text, kept on screen
-        ctx.font = `bold ${fs}px ${HUD.font}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        const tx = clamp(px, fs * 1.8, W - fs * 1.8), ty = clamp(py + dy, topH + M * 2, H - fs);
-        ctx.lineWidth = fs * 0.3; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.strokeText(str, tx, ty);
-        ctx.fillStyle = color; ctx.fillText(str, tx, ty);
+    for (const h of G.hubs.values()) {                                      // hubs
+        const [mx, my] = at(h.x, h.y), hs = clamp(sc * 1.5, 4, 16);
+        ctx.fillStyle = "#aab2c0"; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 1;
+        ctx.fillRect(mx - hs / 2, my - hs / 2, hs, hs); ctx.strokeRect(mx - hs / 2, my - hs / 2, hs, hs);
+    }
+    // The base and you, each with a slowly blinking circle around it.
+    const blink = 0.5 + 0.5 * Math.sin(now / 320);
+    const ring = (x, y, r, color) => {
+        ctx.save();
+        ctx.globalAlpha = 0.25 + 0.75 * blink;
+        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowColor = color; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+        ctx.restore();
     };
-    {                                                                       // the base: a big yellow disc with a house
-        const [bx, by] = at(0, 0), br = Math.max(9, S * 0.022);
-        ctx.fillStyle = HUD.amber; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.lineWidth = 2;
+    {
+        const [bx, by] = at(0, 0), br = Math.max(4, sc * 2.2);
+        ctx.fillStyle = HUD.amber; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = "#2a2318"; ctx.beginPath();
-        ctx.moveTo(bx - br * 0.6, by); ctx.lineTo(bx, by - br * 0.6); ctx.lineTo(bx + br * 0.6, by);
-        ctx.lineTo(bx + br * 0.45, by + br * 0.5); ctx.lineTo(bx - br * 0.45, by + br * 0.5); ctx.closePath(); ctx.fill();
-        label("BASE", bx, by, HUD.amber, br + fs * 0.9);
+        ring(bx, by, Math.max(16, G.baseR * sc), HUD.amber);
     }
-    {                                                                       // you: a white arrow (pointing where you face) with a pulsing ring
-        const [px, py] = at(G.x, G.y), pulse = 0.5 + 0.5 * Math.sin(performance.now() / 300), a = Math.max(7, S * 0.018);
-        ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.4 * pulse})`; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(px, py, a * (1.8 + 0.6 * pulse), 0, TAU); ctx.stroke();
-        ctx.save(); ctx.translate(px, py); ctx.rotate(G.h);
+    {
+        const [px, py] = at(G.x, G.y), a = Math.max(6, S * 0.016);
+        ctx.save(); ctx.translate(px, py); ctx.rotate(G.h);                 // pointing where you face
         ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(0, -a * 1.5); ctx.lineTo(a, a); ctx.lineTo(0, a * 0.4); ctx.lineTo(-a, a); ctx.closePath();
         ctx.fill(); ctx.stroke(); ctx.restore();
-        label("YOU", px, py, "#ffffff", -(a * 2.6 + fs * 0.6));
+        ring(px, py, a * 2.6, "#ffffff");
     }
+    const fs = clamp(S * 0.03, 11, 18);
     {                                                                       // north marker, top left
         const nx = M + fs, ny = M + topH + M + fs;
         ctx.font = `bold ${fs * 1.2}px ${HUD.font}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.strokeText("N", nx, ny + fs * 0.9);
         ctx.fillStyle = HUD.neon; ctx.fillText("N", nx, ny + fs * 0.9);
         ctx.beginPath(); ctx.moveTo(nx, ny - fs * 0.7); ctx.lineTo(nx - fs * 0.4, ny - fs * 0.05);
         ctx.lineTo(nx + fs * 0.4, ny - fs * 0.05); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
 
-    text("RAIL NETWORK", W / 2, M + topH * 0.62, Math.max(13, topH * 0.4), HUD.neon, "center", 8);
-    text("drag to pan  \u00b7  scroll or pinch to zoom", W / 2, H - M, Math.max(10, S * 0.022), HUD.dim, "center", 0);
-    drawSquareButton(W - M - topH, M, topH, "close", false);                // the cross that leaves the screen
-    hudHit.netClose = { x: W - M - topH, y: M, w: topH, h: topH };
+    pillLabel("MAP", W / 2, M + topH / 2, HUD.neon, Math.max(12, topH * 0.36));
+    pillLabel("drag to pan \u00b7 scroll or pinch to zoom", W / 2, H - M - fs * 0.6, HUD.dim, Math.max(10, S * 0.022));
+    drawSquareButton(W - M - topH, M, topH, "close", false);                // the cross that leaves the map
+    hudHit.mapClose = { x: W - M - topH, y: M, w: topH, h: topH };
 }
 
 // Small caption pill centred at (x, y).
@@ -376,10 +422,10 @@ function pillLabel(str, x, y, color, size) {
 
 function drawHUD(cam, W, H) {
     const S = Math.min(W, H);
-    if (G.showNetwork) {
-        // The fullscreen network map covers the game: only its cross, toasts and warnings stay live.
+    if (G.showBigMap) {
+        // The big map covers the game: only its cross, toasts and warnings stay live.
         for (const k in hudHit) hudHit[k] = null;
-        drawNetworkScreen(W, H);
+        drawBigMap(W, H);
         drawToasts(W, Math.max(8, S * 0.028) * 1.6 + Math.max(30, Math.min(58, S * 0.085)));
         if (G.idleUntil > performance.now()) drawBanner(W, H, `STILL THERE?  MOVE WITHIN ${Math.ceil((G.idleUntil - performance.now()) / 1000)}s`, "#ff5a4d");
         return;
@@ -398,9 +444,12 @@ function drawHUD(cam, W, H) {
     hudHit.lens = { x: M + topH + gap0, y: M, w: topH, h: topH };
     drawSquareButton(M + 2 * (topH + gap0), M, topH, "map", G.showMap);
     hudHit.minimap = { x: M + 2 * (topH + gap0), y: M, w: topH, h: topH };
-    drawSquareButton(M + 3 * (topH + gap0), M, topH, "network", false);
-    hudHit.network = { x: M + 3 * (topH + gap0), y: M, w: topH, h: topH };
-    if (G.showMap) drawMinimap(cam, M, M + topH + gap0, Math.max(96, Math.min(190, S * 0.3)) * Math.SQRT2);
+    hudHit.minimapView = null;
+    if (G.showMap) {                                // tapping the minimap opens the big map
+        const ms = Math.max(96, Math.min(190, S * 0.3)) * Math.SQRT2, my = M + topH + gap0;
+        drawMinimap(cam, M, my, ms);
+        hudHit.minimapView = { x: M, y: my, w: ms, h: ms };
+    }
 
     // Bottom centre: [hub | ship]  [about-face]  [travel], thumb-sized on touch.
     const fbR = touch ? Math.max(28, Math.min(46, S * 0.075)) : Math.max(20, Math.min(38, S * 0.05));

@@ -10,7 +10,7 @@ let howReturnEl = menuEl;       // screen to restore when How-to's Back is press
 
 // ---- Which overlay is open? (the game keeps running underneath; we just stop steering) ----
 function overlayOpen() {
-    return !!railMode || G.showNetwork ||
+    return !!railMode || G.showBigMap ||
         [menuEl, howtoEl, pauseEl, noticeEl, chatBarEl, playerMenuEl, payBarEl].some((el) => !el.classList.contains("hidden"));
 }
 function hideAllScreens() {
@@ -262,7 +262,7 @@ function tapTravelTrack(sx, sy) {
 setInterval(() => {
     if (!travelMode) return;
     if (G.state !== "playing") { travelMode = false; return; }
-    if (G.riding || G.showNetwork || parkedHub()) travelIdle = 0;
+    if (G.riding || G.showBigMap || parkedHub()) travelIdle = 0;
     else if (++travelIdle > 8) setTravel(false);
 }, 200);
 
@@ -467,8 +467,10 @@ const KEYS = {
 };
 function zoom(delta) {
     tile = clamp(tile + delta, MIN_TILE, MAX_TILE);
+    try { sessionStorage.setItem("gembot-zoom", String(tile)); } catch (e) { /* storage blocked */ }   // kept for this session
     reportViewport();
 }
+try { const z = +sessionStorage.getItem("gembot-zoom"); if (z) tile = clamp(z, MIN_TILE, MAX_TILE); } catch (e) { /* storage blocked */ }
 
 window.addEventListener("keydown", (e) => {
     if (G.state !== "playing") return;
@@ -476,12 +478,12 @@ window.addEventListener("keydown", (e) => {
         if (e.key === "Escape") { e.preventDefault(); closeRailMode(); }
         return;
     }
-    if (G.showNetwork) {                         // the fullscreen network map
-        if (e.key === "Escape" || e.key === "n" || e.key === "N") { e.preventDefault(); closeNetwork(); }
+    if (G.showBigMap) {                          // the big map
+        if (e.key === "Escape" || e.key === "m" || e.key === "M") { e.preventDefault(); closeBigMap(); }
         else if (e.key === "+" || e.key === "=" || e.key === "-") {
             e.preventDefault();
             const r = canvas.getBoundingClientRect();
-            netZoomAt(r.width / 2, r.height / 2, e.key === "-" ? 1 / 1.25 : 1.25, r.width, r.height);
+            mapZoomAt(r.width / 2, r.height / 2, e.key === "-" ? 1 / 1.25 : 1.25, r.width, r.height);
         }
         return;
     }
@@ -512,6 +514,8 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault(); if (!e.repeat) requestHubOptions();
     } else if (e.key === "t" || e.key === "T") {
         e.preventDefault(); if (!e.repeat) toggleTravel();
+    } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault(); if (!e.repeat) openBigMap();
     } else if (e.key === "g" || e.key === "G") {
         e.preventDefault(); if (!e.repeat) doShip();
     } else if (e.key === "Escape") {
@@ -532,61 +536,65 @@ function toggleView(flag, storeKey) {
     try { localStorage.setItem(storeKey, G[flag] ? "1" : "0"); } catch (e) { /* ignore */ }
 }
 
-// ---- The fullscreen network map: drag to pan, wheel or pinch to zoom, the cross (or Esc / N) to leave ----
-function openNetwork() {
+// ---- The big map (tap the minimap): drag to pan, wheel or pinch to zoom, the cross (or Esc / M) to leave ----
+// Its zoom is remembered for this browser session, like the game's.
+try { const z = +sessionStorage.getItem("gembot-mapzoom"); if (z > 0) mapView.sc = z; } catch (e) { /* storage blocked */ }
+function saveMapZoom() { try { sessionStorage.setItem("gembot-mapzoom", String(mapView.sc)); } catch (e) { /* ignore */ } }
+function openBigMap() {
     const r = canvas.getBoundingClientRect();
-    fitNetwork(r.width, r.height);
-    G.showNetwork = true;
+    centreBigMap(r.width, r.height);
+    G.showBigMap = true;
     releaseKeys();
     sendControls(true);
 }
-function closeNetwork() {
-    G.showNetwork = false;
-    netPointers.clear();
+function closeBigMap() {
+    G.showBigMap = false;
+    mapPointers.clear();
+    saveMapZoom();
     sendControls(true);
 }
-const netPointers = new Map();     // pointerId -> { x, y } of the fingers / mouse button held on the network map
-let netMoved = 0;                  // how far the pointers travelled since the first went down (a drag is not a click)
+const mapPointers = new Map();     // pointerId -> { x, y } of the fingers / mouse button held on the big map
+let mapMoved = 0;                  // how far the pointers travelled since the first went down (a drag is not a click)
 
 canvas.addEventListener("pointerdown", (e) => {
-    if (!G.showNetwork) return;
+    if (!G.showBigMap) return;
     const r = canvas.getBoundingClientRect();
-    if (!netPointers.size) netMoved = 0;
-    netPointers.set(e.pointerId, { x: e.clientX - r.left, y: e.clientY - r.top });
+    if (!mapPointers.size) mapMoved = 0;
+    mapPointers.set(e.pointerId, { x: e.clientX - r.left, y: e.clientY - r.top });
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
 });
 canvas.addEventListener("pointermove", (e) => {
-    const p = netPointers.get(e.pointerId);
-    if (!G.showNetwork || !p) return;
+    const p = mapPointers.get(e.pointerId);
+    if (!G.showBigMap || !p) return;
     const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    if (netPointers.size >= 2) {                               // pinch: zoom about the midpoint, and follow it
-        const other = [...netPointers.entries()].find(([id]) => id !== e.pointerId)[1];
+    if (mapPointers.size >= 2) {                               // pinch: zoom about the midpoint, and follow it
+        const other = [...mapPointers.entries()].find(([id]) => id !== e.pointerId)[1];
         const before = Math.hypot(p.x - other.x, p.y - other.y), after = Math.hypot(x - other.x, y - other.y);
         const mx0 = (p.x + other.x) / 2, my0 = (p.y + other.y) / 2, mx1 = (x + other.x) / 2, my1 = (y + other.y) / 2;
-        netPan(mx1 - mx0, my1 - my0, r.width, r.height);
-        if (before > 0 && after > 0) netZoomAt(mx1, my1, after / before, r.width, r.height);
+        mapPan(mx1 - mx0, my1 - my0, r.width, r.height);
+        if (before > 0 && after > 0) mapZoomAt(mx1, my1, after / before, r.width, r.height);
     } else {
-        netPan(x - p.x, y - p.y, r.width, r.height);
+        mapPan(x - p.x, y - p.y, r.width, r.height);
     }
-    netMoved += Math.hypot(x - p.x, y - p.y);
+    mapMoved += Math.hypot(x - p.x, y - p.y);
     p.x = x; p.y = y;
 });
-function netPointerEnd(e) { netPointers.delete(e.pointerId); }
-canvas.addEventListener("pointerup", netPointerEnd);
-canvas.addEventListener("pointercancel", netPointerEnd);
+function mapPointerEnd(e) { mapPointers.delete(e.pointerId); }
+canvas.addEventListener("pointerup", mapPointerEnd);
+canvas.addEventListener("pointercancel", mapPointerEnd);
 canvas.addEventListener("wheel", (e) => {
-    if (!G.showNetwork) return;
+    if (!G.showBigMap) return;
     e.preventDefault();
     const r = canvas.getBoundingClientRect();
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;       // lines -> pixels
-    netZoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-dy * 0.0015), r.width, r.height);
+    mapZoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-dy * 0.0015), r.width, r.height);
 }, { passive: false });
 
 // ---- Taps on the canvas HUD ----
 canvas.addEventListener("click", (e) => {
-    if (G.state === "playing" && G.showNetwork) {
+    if (G.state === "playing" && G.showBigMap) {
         const r = canvas.getBoundingClientRect();
-        if (netMoved < 10 && inRect(hudHit.netClose, e.clientX - r.left, e.clientY - r.top)) closeNetwork();
+        if (mapMoved < 10 && inRect(hudHit.mapClose, e.clientX - r.left, e.clientY - r.top)) closeBigMap();
         return;
     }
     if (G.state === "playing" && railMode) {
@@ -603,7 +611,7 @@ canvas.addEventListener("click", (e) => {
     else if (inRect(hudHit.placeHub, x, y)) requestHubOptions();
     else if (inRect(hudHit.lens, x, y)) toggleView("showArrows", "gembot-arrows");
     else if (inRect(hudHit.minimap, x, y)) toggleView("showMap", "gembot-map");
-    else if (inRect(hudHit.network, x, y)) openNetwork();
+    else if (inRect(hudHit.minimapView, x, y)) openBigMap();
     else if (inRect(hudHit.ship, x, y)) doShip();
     else if (inRect(hudHit.travel, x, y)) toggleTravel();
     else if (inRect(hudHit.score, x, y)) togglePlayersPanel();
