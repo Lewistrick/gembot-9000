@@ -27,13 +27,13 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 | Block someone | click their robot, then Block | tap their robot, then Block (Tab or your score lists nearby players) |
 | Ship gems / travel (parked on a hub) | G / T | the **SHIP** and **TRAVEL** buttons that appear beside ↻ when you park on a hub; TRAVEL toggles travel mode, then tap a track to ride it |
 | Place a hub where you stand | B | the **HUB** button beside ↻ (only shown if you could pay for one; lit when you stand still on an empty tile) |
-| Lens / minimap / big map | the 🔍 and map buttons beside the menu button; **tap the minimap** (or press M) for the big map: the minimap fullscreen, north up, with floor, rock, gems, hubs and tracks, the base and you blinking; drag to pan, scroll/pinch to zoom, ✕ or Esc to leave | the same buttons, tap the minimap |
+| Lens / minimap / big map | the 🔍 and map buttons beside the menu button; **tap the minimap** (or press M) for the big map: the minimap fullscreen, north up, with floor, rock, gems, hubs and tracks within 150 tiles of a hub or the base (the rest is black), the base and you blinking; drag to pan, scroll/pinch to zoom, ✕ or Esc to leave | the same buttons, tap the minimap |
 | Zoom | PageUp / PageDown, + / − (kept for the browser session, like the big map's zoom) | |
 
 ## The rules
 
 - **Gems.** Drive over one to mine it (a gem icon and its value float up from your robot); it goes into your **cargo** (unlimited) and is gone for
-  *everyone* for the rest of the day. They sit in rock faces, get **rarer but richer** with
+  *everyone* for the rest of the day. They sit in rock faces, just as common everywhere but **richer** with
   distance from the base (`value × (1 + distance/150)`), and ten rare **mega gems** (250 each)
   hide 60–400 tiles out; they glow amber on the minimap (which also draws hubs, rails and the base) and mining one is announced.
 - **Score.** Cargo only scores once **delivered to the base**: drive into the dashed ring

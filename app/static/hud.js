@@ -263,6 +263,8 @@ function drawMinimap(cam, x, y, size) {
 // ---- The big map: the minimap fullscreen and north up (tap the minimap), with pan and zoom ----
 const mapView = { cx: 0, cy: 0, sc: 0 };       // world point at the screen centre, and px per tile (0: not chosen yet)
 const MAP_MAX_SCALE = 40;
+const MAP_LIT = 150;                           // the big map shows this far around every hub (the base too); beyond is black
+let bigMapMask = null;                          // offscreen canvas for that black
 let bigMapTiles = null, bigMapKey = "";        // floor/rock of every loaded chunk, one pixel per tile (rebuilt when terrain changes)
 
 function loadedBounds() {                       // tiles of the loaded chunks (null if none yet)
@@ -364,6 +366,28 @@ function drawBigMap(W, H) {
             ctx.fillStyle = mega ? "#ffd64d" : colors.gem; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.arc(mx, my, mega ? dot * 1.6 : dot, 0, TAU); ctx.fill(); ctx.stroke();
         }
+    }
+    // Black beyond MAP_LIT tiles of every hub: a black layer with a hole round each hub.
+    {
+        const dpr = window.devicePixelRatio || 1;
+        if (!bigMapMask) bigMapMask = document.createElement("canvas");
+        const mw = Math.round(W * dpr), mh = Math.round(H * dpr);
+        if (bigMapMask.width !== mw || bigMapMask.height !== mh) { bigMapMask.width = mw; bigMapMask.height = mh; }
+        const mc = bigMapMask.getContext("2d");
+        mc.setTransform(dpr, 0, 0, dpr, 0, 0);
+        mc.globalCompositeOperation = "source-over";
+        mc.fillStyle = "#000"; mc.fillRect(0, 0, W, H);
+        mc.globalCompositeOperation = "destination-out";
+        mc.beginPath();
+        const r = MAP_LIT * sc;
+        for (const [hx, hy] of [[0, 0], ...[...G.hubs.values()].map((h) => [h.x, h.y])]) {
+            const [px, py] = at(hx, hy);
+            if (px < -r || py < -r || px > W + r || py > H + r) continue;
+            mc.moveTo(px + r, py); mc.arc(px, py, r, 0, TAU);
+        }
+        mc.fill();
+        mc.globalCompositeOperation = "source-over";
+        ctx.drawImage(bigMapMask, 0, 0, W, H);
     }
     for (const h of G.hubs.values()) {                                      // hubs
         const [mx, my] = at(h.x, h.y), hs = clamp(sc * 1.5, 4, 16);

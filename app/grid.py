@@ -70,10 +70,7 @@ _HUE_RATE: float = 0.0005
 """Hue turns (0..1) per tile of distance from the origin — a very slow colour drift."""
 
 _GEM_MAX_P: float = 0.02
-"""Gem chance per floor tile at the origin; decays with distance from it."""
-
-_GEM_FALLOFF: float = 120.0
-"""Distance (tiles) over which the gem chance falls off by a factor of e."""
+"""Gem chance per wall-touching floor tile, the same everywhere (far out is only richer)."""
 
 _GEM_VALUE_MIN: int = 10
 _GEM_VALUE_MAX: int = 40
@@ -583,8 +580,8 @@ class World:
         """Gem sites in a chunk as ``{(x, y): value}``. Deterministic per seed.
 
         Ordinary gems form only on floor tiles that touch a wall, so they sit in
-        the rock face. They grow exponentially rarer with distance from the origin
-        (chance ``_GEM_MAX_P * e**(-d/fall)``) but richer (``base * (1 + d/150)``).
+        the rock face, with chance ``_GEM_MAX_P`` everywhere; they grow richer with
+        distance from the origin (``base * (1 + d/150)``).
         Collection is tracked elsewhere; this reflects only the world's terrain.
         """
         chunk = self.chunk(cx, cy)
@@ -612,7 +609,7 @@ class World:
         if rows.size:
             xs, ys = cx * c + cols.astype(np.int64), cy * c + rows.astype(np.int64)
             dist = np.hypot(xs, ys)
-            prob = _GEM_MAX_P * np.exp(-dist / _GEM_FALLOFF)
+            prob = _GEM_MAX_P
             keep = _rand01_arr(self.seed, xs.shape, 0x6E71, xs, ys) < prob
             xs, ys, dist = xs[keep], ys[keep], dist[keep]
             if xs.size:

@@ -365,6 +365,18 @@ function freePort() {
         await frames(); await frames();                  // floor, rock, gems, hubs, tracks, the base and you
         out.bigTerrain = !!bigMapTiles && bigMapTiles.canvas.width >= CS && bigMapTiles.canvas.height >= CS;
         out.bigCross = !!hudHit.mapClose && !hudHit.hamburger && !hudHit.minimap && hudHit.mapClose.x > W / 2;
+        // Only MAP_LIT tiles around each hub (and the base) are shown; beyond is black.
+        {
+            const keep = mapView.sc;
+            mapView.sc = Math.min(W, H) / 700; mapView.cx = 0; mapView.cy = 0;   // zoomed far out, centred on the base
+            await frames();
+            const px = (wx, wy) => { const d = ctx.getImageData(Math.round(W / 2 + (wx - mapView.cx) * mapView.sc), Math.round(H / 2 + (wy - mapView.cy) * mapView.sc), 1, 1).data; return d[0] + d[1] + d[2]; };
+            const far = [-300, 0];                                 // 300 tiles from the base, ~340 from the hubs
+            out.bigDarkFar = px(...far) === 0;
+            out.bigLitNear = px(16, 16) > 30;                      // inside the base's circle: terrain shows
+            mapView.sc = keep; mapView.cx = G.x; mapView.cy = G.y;
+            await frames();
+        }
         const s0 = mapView.sc;
         // Scroll zooms about the pointer: the world point under it stays put.
         const wx = mapView.cx + (W * 0.7 - W / 2) / mapView.sc, wy = mapView.cy + (H * 0.3 - H / 2) / mapView.sc;
@@ -432,6 +444,8 @@ function freePort() {
         ["bigCentred", "the big map opens centred on you"],
         ["bigTerrain", "the big map draws the loaded floor and rock"],
         ["bigCross", "the big map has a cross and covers the other buttons"],
+        ["bigDarkFar", "the big map is black more than 150 tiles from every hub"],
+        ["bigLitNear", "it shows the terrain within 150 tiles of a hub"],
         ["bigZoomIn", "scrolling up zooms in"],
         ["bigZoomAnchored", "zoom keeps the point under the pointer in place"],
         ["bigZoomLimit", "zooming out stops when everything fits"],
