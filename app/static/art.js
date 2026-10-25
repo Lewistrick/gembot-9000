@@ -349,6 +349,7 @@ const ART = (() => {
         c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = "#11181c";
         lines.forEach((l, i) => c.fillText(l, cx, y + pad * 0.6 + lh * (i + 0.5)));
         c.restore();
+        return [x, y, w, h + fs * 0.5];                              // where it went (tail included)
     }
 
     return { track, hub, base, baseRing, cart, nameTag, crown, bubble };
