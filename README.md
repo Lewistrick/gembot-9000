@@ -34,8 +34,9 @@ Pick a nickname on the menu and join. The map rotates to follow your heading wit
 
 - **Colours.** Each day has three biomes, each a different hand-made theme (copper mine, emerald
   cave, ice cavern, lava, desert sandstone, amethyst, coal and gold, coral reef, jungle, glacier
-  night) a little varied by the date: within 250 tiles of the base, 250-600, and beyond. The
-  colours blend smoothly over 40 tiles where biomes meet.
+  night) a little varied by the date: within 250 tiles of the base, 250-600, and beyond. Each
+  tile shows the biome of its own position; at each edge a ridge 50 tiles wide mixes 4x4 blocks of
+  the two biomes, gradually going from one to the other.
 - **Gems.** Drive over one to mine it (a gem icon and its value float up from your robot); it goes into your **cargo** (at most **500**: a full robot leaves gems where they are, so bank or ship
   it) and is gone for
   *everyone* for the rest of the day. They sit in rock faces: common within 250 tiles of the base, **sparse** beyond (about one per

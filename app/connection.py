@@ -7,7 +7,7 @@ volatile ``tick`` message may be skipped for a slow client.
 
 Messages, server -> client (``t`` is the type):
 
-* ``welcome``  your id, day, world constants, base palette
+* ``welcome``  your id, day, world constants, the day's three biome palettes
 * ``chunk``    one terrain chunk: packed floor bits, gem sites, already-mined gems
 * ``drop``     chunks the client may forget (it is far from them now)
 * ``mined``    gem cells mined since the last message (everyone's)
@@ -16,7 +16,7 @@ Messages, server -> client (``t`` is the type):
 * ``tick``     your pose, cargo and score; every other tick also nearby robots
 * ``pay``      cargo can't cover a cost: ask before paying the rest from banked score
 * ``hubs``     rail hubs (all of them on join, then any new or re-linked ones)
-* ``board``    top of the daily leaderboard, your rank, online count, palette
+* ``board``    top of the daily leaderboard, your rank, online count
 * ``announce`` game-wide text; ``gain`` / ``delivered`` / ``warn`` / ``kicked``
   ``toll`` / ``rail`` (a message for a toast) / ``quote`` (build preview) /
   ``hubopts`` (hubs a new hub on your tile could lead to) / ``built`` /
@@ -37,7 +37,7 @@ from .game import (
     Game,
     Row,
 )
-from .grid import BASE_RADIUS, CHUNK
+from .grid import BASE_RADIUS, BIOME_EDGES, BIOME_RIDGE, CHUNK, biome_salt
 from .player import MAX_SPEED, TICK, Player, hue_for
 from .rail import HUB_COST, MAX_TRACK
 
@@ -109,7 +109,11 @@ class Connection:
             "base": BASE_RADIUS,
             "light": [LIGHT_DIM, LIGHT_DARK, LIGHT_LOST],
             "light_warn": LIGHT_WARN,
-            "colors": g.world.palette(0.0),
+            "colors": g.world.colors,
+            "biomes": g.world.biomes,
+            "biome_edges": list(BIOME_EDGES),
+            "biome_ridge": BIOME_RIDGE,
+            "biome_salt": biome_salt(g.world.seed),
             "mult": g.multiplier,
         }
 
@@ -319,7 +323,6 @@ class Connection:
                     "top": g.board_rows(10),
                     "you": {"rank": g.rank.get(p.pid), "score": p.score},
                     "online": g.online_count(),
-                    "pal": g.world.palette(math.hypot(p.x, p.y)),
                     "mult": g.multiplier,
                     "left": g.day_left,
                 }

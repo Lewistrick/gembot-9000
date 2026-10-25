@@ -333,7 +333,7 @@ function freePort() {
             c.mega.add(ng[0] + "," + ng[1]);
             await frames();
             const t = lensTargets.find((x) => x.mega);
-            out.megaArrow = !!t && t.color === "#ffffff" && t.glow === curColors().gem && t.color !== lensTargets[0].color;
+            out.megaArrow = !!t && t.color === "#ffffff" && t.glow === biomePal(ng[0], ng[1]).gem && t.color !== lensTargets[0].color;
             c.mega.delete(ng[0] + "," + ng[1]);
         } else out.megaArrow = true;
         click(hudHit.lens);
@@ -563,6 +563,45 @@ function freePort() {
         ["slowWhileRiding", "the camera swings slower while riding"],
         ["fasterWhenFarOff", "the camera turns faster when it is far off"],
     ]) check(camTest[k] === true, what);
+
+    // --- Biomes per tile: pure inside each ring, a mixed ridge at each edge, same for everyone ---
+    const bio = await a.evaluate(async () => {
+        const out = {};
+        out.sent = !!BIOMES && BIOMES.pals.length === 3 && BIOMES.ridge === 50 && BIOMES.edges[0] === 250;
+        out.pure = [0, 100, 220].every((d) => biomeAt(d, 0) === 0) && [280, 400, 570].every((d) => biomeAt(d, 0) === 1)
+            && [630, 900, 2000].every((d) => biomeAt(0, -d) === 2);
+        const share = (r0, r1) => {                          // share of outer-biome blocks in a ring band
+            let n = 0, outer = 0;
+            for (let a = 0; a < 2000; a++) {
+                const ang = (a / 2000) * Math.PI * 2, r = r0 + ((a * 7919) % 100) / 100 * (r1 - r0);
+                n++; if (biomeAt(Math.round(Math.cos(ang) * r), Math.round(Math.sin(ang) * r)) === 1) outer++;
+            }
+            return outer / n;
+        };
+        const s1 = share(228, 233), s2 = share(247, 253), s3 = share(267, 272);
+        out.ridge = s1 < 0.15 && s2 > 0.3 && s2 < 0.7 && s3 > 0.85;
+        out.ridgeNumbers = [s1, s2, s3].map((x) => x.toFixed(2)).join("/");
+        let same = true;                                     // a 4x4 block is one biome
+        for (let bx = 60; bx < 66; bx++) for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++)
+            if (biomeAt(bx * 4 + i, j) !== biomeAt(bx * 4, 0)) same = false;
+        out.blocks = same;
+        // draws without errors with the ridge in view (tiles, gems, minimap, big map)
+        const realTick = HANDLERS.tick, saved = { from: camFrom, to: camTo, x: G.x, y: G.y };
+        HANDLERS.tick = () => {};
+        camFrom = camTo = { x: 250, y: 0, h: 0 }; G.x = 250; G.y = 0; G.showMap = true;
+        await new Promise((r) => setTimeout(r, 300));
+        G.showMap = false; camFrom = saved.from; camTo = saved.to; G.x = saved.x; G.y = saved.y;
+        HANDLERS.tick = realTick;
+        out.hudFollows = curColors() === BIOMES.pals[biomeAt(Math.round(G.x), Math.round(G.y))];
+        return out;
+    });
+    for (const [k, what] of [
+        ["sent", "the server sends the three biome palettes and the ridge"],
+        ["pure", "each biome is pure away from the edges, by tile position"],
+        ["ridge", `the ridge mixes blocks gradually (${bio.ridgeNumbers})`],
+        ["blocks", "a 4x4 block is one biome"],
+        ["hudFollows", "the HUD uses the colours of the tile you're on"],
+    ]) check(bio[k] === true, what);
 
     // --- Light: dark away from hubs, a notice at pitch black, and being sent home ---
     const light = await a.evaluate(async () => {

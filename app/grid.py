@@ -534,9 +534,10 @@ class World:
         self.max_chunks = _CACHE_CHUNKS
         self.colors = colors_for_seed(self.seed)  # base palette (origin)
 
-    def palette(self, distance: float) -> dict[str, str]:
-        """Palette with the hue drifted by ``distance`` tiles from the origin."""
-        return colors_for_seed(self.seed, distance)
+    @property
+    def biomes(self) -> list[dict[str, str]]:
+        """The three biome palettes of the day (inner, middle, outer)."""
+        return biome_palettes(self.seed)
 
     # -- terrain ----------------------------------------------------------- #
     def chunk(self, cx: int, cy: int) -> Chunk:
@@ -782,7 +783,7 @@ THEMES: list[
 ]
 BIOME_EDGES: tuple[float, float] = (250.0, 600.0)
 """Distances (tiles) where the inner, middle and outer biomes meet."""
-_BIOME_BLEND: float = 40.0  # width of the smooth blend across each edge
+BIOME_RIDGE: float = 50.0  # width of the mixed band across each edge
 
 
 def _clamp01(v: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -821,26 +822,26 @@ def _biome_rgb(seed: int, ring: int) -> dict[str, tuple[float, float, float]]:
     }
 
 
-def colors_for_seed(seed: int, distance: float = 0.0) -> dict[str, str]:
-    """The palette at ``distance`` tiles from the origin.
+def biome_palettes(seed: int) -> list[dict[str, str]]:
+    """The day's three biome palettes: inner, middle and outer (see ``BIOME_EDGES``).
 
-    Each day has three biomes (inner, middle, outer, split at ``BIOME_EDGES``), each
-    a different hand-made theme slightly varied by the seed; colours blend smoothly
-    over ``_BIOME_BLEND`` tiles across each edge."""
-    rings = [_biome_rgb(seed, k) for k in range(3)]
-    ring, t = 0, 0.0
-    for k, edge in enumerate(BIOME_EDGES):
-        if distance >= edge + _BIOME_BLEND / 2:
-            ring = k + 1
-        elif distance > edge - _BIOME_BLEND / 2:
-            ring, t = k, (distance - (edge - _BIOME_BLEND / 2)) / _BIOME_BLEND
-            break
-    a = rings[ring]
-    b = rings[min(ring + 1, 2)]
-    t = t * t * (3 - 2 * t)  # eased
-    out = {
-        key: _hex(*(a[key][i] + (b[key][i] - a[key][i]) * t for i in range(3)))
-        for key in ("floor", "rock", "grid", "gem")
-    }
-    out["player"] = "#e53935"
+    Each is a different hand-made theme slightly varied by the seed. Which biome a
+    tile belongs to is decided per tile by the client (``biomeAt`` in world.js),
+    with a mixed ridge ``BIOME_RIDGE`` tiles wide at each edge."""
+    out = []
+    for ring in range(3):
+        rgbs = _biome_rgb(seed, ring)
+        pal = {key: _hex(*rgbs[key]) for key in ("floor", "rock", "grid", "gem")}
+        pal["player"] = "#e53935"
+        out.append(pal)
     return out
+
+
+def biome_salt(seed: int) -> int:
+    """A 32-bit number that makes the day's ridge pattern (shared by every client)."""
+    return _hash(seed, 0xB1D6) & 0xFFFFFFFF
+
+
+def colors_for_seed(seed: int) -> dict[str, str]:
+    """The inner biome's palette (around the base)."""
+    return biome_palettes(seed)[0]

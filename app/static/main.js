@@ -138,8 +138,9 @@ function drawArrows(cam, ax, ay, now) {
         targets.push({ x: 0, y: 0, color: HUD.amber, ring: 2.5 });                          // the base: yellow
         // the nearest gem in its colour; a mega gem white with a gem-coloured glow (amber would look like the base)
         const gem = nearestGem(cam.x, cam.y);
-        if (gem) targets.push(gem[2] ? { x: gem[0], y: gem[1], color: "#ffffff", glow: curColors().gem, blur: 12, ring: 2.0, mega: true }
-            : { x: gem[0], y: gem[1], color: curColors().gem, ring: 2.0 });
+        const gemCol = gem ? biomePal(gem[0], gem[1]).gem : null;   // the colour that gem is drawn in
+        if (gem) targets.push(gem[2] ? { x: gem[0], y: gem[1], color: "#ffffff", glow: gemCol, blur: 12, ring: 2.0, mega: true }
+            : { x: gem[0], y: gem[1], color: gemCol, ring: 2.0 });
         let hub = null, hd = Infinity;
         for (const h of G.hubs.values()) {
             const d = Math.hypot(h.x - cam.x, h.y - cam.y);
