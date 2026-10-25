@@ -567,9 +567,9 @@ function freePort() {
     // --- Biomes per tile: pure inside each ring, a mixed ridge at each edge, same for everyone ---
     const bio = await a.evaluate(async () => {
         const out = {};
-        out.sent = !!BIOMES && BIOMES.pals.length === 3 && BIOMES.ridge === 50 && BIOMES.edges[0] === 250;
-        out.pure = [0, 100, 220].every((d) => biomeAt(d, 0) === 0) && [280, 400, 570].every((d) => biomeAt(d, 0) === 1)
-            && [630, 900, 2000].every((d) => biomeAt(0, -d) === 2);
+        out.sent = !!BIOMES && BIOMES.pals.length === 3 && BIOMES.ridge === 100 && BIOMES.edges[0] === 250;
+        out.pure = [0, 100, 195].every((d) => biomeAt(d, 0) === 0) && [305, 400, 545].every((d) => biomeAt(d, 0) === 1)
+            && [655, 900, 2000].every((d) => biomeAt(0, -d) === 2);
         const share = (r0, r1) => {                          // share of outer-biome tiles in a ring band
             let n = 0, outer = 0;
             for (let a = 0; a < 2000; a++) {
@@ -578,7 +578,7 @@ function freePort() {
             }
             return outer / n;
         };
-        const s1 = share(228, 233), s2 = share(247, 253), s3 = share(267, 272);
+        const s1 = share(205, 215), s2 = share(245, 255), s3 = share(285, 295);
         out.ridge = s1 < 0.15 && s2 > 0.3 && s2 < 0.7 && s3 > 0.85;
         out.ridgeNumbers = [s1, s2, s3].map((x) => x.toFixed(2)).join("/");
         let changes = 0;                                     // per tile: neighbours in the ridge differ often

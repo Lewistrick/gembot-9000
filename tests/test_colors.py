@@ -73,5 +73,5 @@ def test_welcome_carries_the_biomes_and_the_ridge() -> None:
     w = Connection(game, p).welcome()
     assert w["biomes"] == game.world.biomes and len(w["biomes"]) == 3
     assert w["biome_edges"] == list(BIOME_EDGES) == [250.0, 600.0]
-    assert w["biome_ridge"] == BIOME_RIDGE == 50.0
+    assert w["biome_ridge"] == BIOME_RIDGE == 100.0
     assert w["biome_salt"] == biome_salt(game.world.seed)
