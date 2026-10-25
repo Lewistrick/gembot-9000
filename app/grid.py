@@ -783,7 +783,7 @@ THEMES: list[
 ]
 BIOME_EDGES: tuple[float, float] = (250.0, 600.0)
 """Distances (tiles) where the inner, middle and outer biomes meet."""
-BIOME_RIDGE: float = 50.0  # width of the mixed band across each edge
+BIOME_RIDGE: float = 100.0  # width of the mixed band across each edge
 
 
 def _clamp01(v: float, lo: float = 0.0, hi: float = 1.0) -> float:
