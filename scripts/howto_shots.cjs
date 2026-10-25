@@ -77,7 +77,8 @@ function installHelpers() {
         travelMode = false; railMode = null; wasDark = false; warnedFar = false;
         G.x = G.y = 0; G.h = 0; camFrom = camTo = { x: 0, y: 0, h: 0 }; camH = 0;   // back at the base between scenes
         for (const k of [...drilled.keys()]) if (S.lent && S.lent.has(k)) drilled.delete(k);
-        payBarEl.classList.add("hidden");
+        payBarEl.classList.add("hidden"); playerMenuEl.classList.add("hidden");
+        G.carts.clear(); G.follow = G.followAt = null; G.scoreFlash = 0;
         if (G.me) G.meta.set(G.me.num, { n: G.me.num, id: G.me.id, name: G.me.name, chat: "", hue: G.me.hue });
     };
     // A floor tile P near the base with a clear straight line to the base and to another floor tile Q.
@@ -207,6 +208,47 @@ const scenes = [
         const [px, py, qx, qy] = S.last.found, a = sp((px + qx) / 2, (py + qy) / 2);
         return { tollPill: around(a[0], a[1], tile * 1.5, tile * 0.75), travel: hud("travel"), ship: hud("ship"), robot: robot() };
     }],
+    ["park", () => {
+        // Parked on your own hub, linked straight to the base: SHIP is free, TRAVEL is ready.
+        const s = hubSpot();
+        pose(s.px, s.py, heading(s.px, s.py, 0, 0));
+        G.cargo = 35; G.score = 120;
+        G.hubs.set(1, { id: 1, x: s.px, y: s.py, bn: G.me.num, out: 0 });
+        return { found: [s.px, s.py] };
+    }, async () => ({ ship: hud("ship"), travel: hud("travel"), robot: robot() })],
+    ["tolls", () => {
+        // Parked on your hub Q; its track runs over Nova's hub P to the base, so shipping costs a toll.
+        const s = hubSpot();
+        pose(s.qx, s.qy, heading(s.qx, s.qy, s.px, s.py));
+        G.cargo = 35; G.score = 120;
+        G.meta.set(2, { n: 2, id: "nova-id", name: "Nova", chat: "", hue: 200 });
+        G.hubs.set(1, { id: 1, x: s.px, y: s.py, bn: 2, out: 0 });
+        G.hubs.set(2, { id: 2, x: s.qx, y: s.qy, bn: G.me.num, out: 1 });
+        return { found: [s.px, s.py] };
+    }, async () => {
+        const [px, py] = S.last.found;
+        return { ship: hud("ship"), hub: tileBox(px, py, 1.1), robot: robot() };
+    }],
+    ["earn", () => {
+        // Nova rides over your hub and a cart rolls past it: you earn tolls and your score blinks.
+        const s = hubSpot();
+        pose(s.qx, s.qy, heading(s.qx, s.qy, s.px, s.py));
+        G.cargo = 20; G.score = 312; G.rank = 5;
+        G.hubs.set(1, { id: 1, x: s.px, y: s.py, bn: G.me.num, out: 0 });
+        G.hubs.set(2, { id: 2, x: s.qx, y: s.qy, bn: 2, out: 1 });
+        const at = (t) => ({ x: s.px + (0 - s.px) * t, y: s.py + (0 - s.py) * t });
+        const n = at(0.18), c = at(0.45), hn = heading(s.px, s.py, 0, 0);
+        G.others.set(77, { from: { ...n, h: hn }, to: { ...n, h: hn }, t0: performance.now() - 1000, f: 0 });
+        G.meta.set(77, { n: 77, id: "nova-id", name: "Nova", chat: "", hue: 200 });
+        G.carts.set(9, { from: { ...c, h: 0 }, to: { ...c, h: 0 }, t0: performance.now() - 1000, a: Math.atan2(-s.py, -s.px) });
+        HANDLERS.toll({ v: 2, from: "Nova" });
+        return { found: [s.px, s.py] };
+    }, async () => {
+        G.scoreFlash = performance.now() - 10;           // the picture catches the score mid-blink
+        await frames(2);
+        const [px, py] = S.last.found;
+        return { score: hud("score"), hub: tileBox(px, py, 1.1) };
+    }],
     ["pay", () => {
         const s = hubSpot();
         pose(s.px, s.py, heading(s.px, s.py, s.qx, s.qy));
@@ -272,17 +314,56 @@ const scenes = [
         const box = (id) => { const r = bubbleRects.get(id); return r && r.map(Math.round); };   // exactly where the bubbles were drawn
         return { other: box("nova-id"), mine: box(G.me.id) };
     }],
+    ["pmenu", () => {
+        // Tapped Nova: the player menu with Follow and Block.
+        const s = hubSpot();
+        pose(s.px, s.py, heading(s.px, s.py, s.qx, s.qy));
+        let ox = s.px, oy = s.py;
+        for (const d of [[3, -4], [-3, -4], [4, -2], [-4, -2], [4, 0], [-4, 0]]) if (isFloor(s.px + d[0], s.py + d[1])) { ox = s.px + d[0]; oy = s.py + d[1]; break; }
+        const t = { x: ox, y: oy, h: 0 };
+        G.others.set(77, { from: t, to: t, t0: performance.now() - 1000, f: 0 });
+        const meta = { n: 77, id: "nova-id", name: "Nova", chat: "nice find!", hue: 200 };
+        G.meta.set(77, meta);
+        openPlayerMenu(meta);
+        return { found: [ox, oy] };
+    }, async () => ({ follow: dom("pmFollow"), block: dom("pmBlock") })],
+    ["follow", () => {
+        // Following Nova: a black arrow with a stripe in their colour points at them.
+        const s = hubSpot();
+        pose(s.px, s.py, heading(s.px, s.py, s.qx, s.qy));
+        const [ox, oy] = [Math.round(s.px + (s.qx - s.px) * 0.8), Math.round(s.py + (s.qy - s.py) * 0.8)];
+        const t = { x: ox, y: oy, h: 0 };
+        G.others.set(77, { from: t, to: t, t0: performance.now() - 1000, f: 0 });
+        G.meta.set(77, { n: 77, id: "nova-id", name: "Nova", chat: "", hue: 200 });
+        G.follow = { id: "nova-id", name: "Nova", hue: 200 }; G.followAt = [ox, oy];
+        return { found: [ox, oy] };
+    }, async () => {
+        const c = canvas.getBoundingClientRect(), ax = c.width / 2, ay = c.height * ANCHOR_Y, p = sp(...S.last.found);
+        const d = Math.hypot(p[0] - ax, p[1] - ay), ux = (p[0] - ax) / d, uy = (p[1] - ay) / d, r = tile * 3.25;
+        return { arrow: around(ax + ux * r, ay + uy * r, tile * 0.6, tile * 0.6), nova: tileBox(...S.last.found, 0.9) };
+    }],
     ["day", () => {
         const s = hubSpot();
         pose(s.px, s.py, heading(s.px, s.py, s.qx, s.qy));
-        G.mult = 2; G.left = 1700; G.leftAt = performance.now(); G.score = 540; G.rank = 3; G.cargo = 66;
+        G.mult = 1; G.left = 9 * 3600 + 1240; G.leftAt = performance.now(); G.score = 540; G.rank = 3; G.cargo = 66;
+        return { found: [s.px, s.py] };
+    }, async () => ({ score: hud("score") })],
+    ["rush", () => {
+        // The last hour (gems count double), and you won yesterday: a crown on your name tag.
+        const s = hubSpot();
+        pose(s.px, s.py, heading(s.px, s.py, s.qx, s.qy));
+        G.mult = 2; G.left = 1700; G.leftAt = performance.now(); G.score = 540; G.rank = 1; G.cargo = 66;
+        G.meta.set(G.me.num, { n: G.me.num, id: G.me.id, name: G.me.name, chat: "", hue: G.me.hue, crown: true });
         return { found: [s.px, s.py] };
     }, async () => {
         const c = canvas.getBoundingClientRect(), S_ = Math.min(c.width, c.height), M = Math.max(8, S_ * 0.028), topH = Math.max(30, Math.min(58, S_ * 0.085));
         const fs = Math.max(11, Math.min(c.width * 0.03, 16));
         ctx.font = `bold ${fs}px ${HUD.font}`;
         const w = ctx.measureText(`RUSH HOUR x2  ${fmtLeft(1700)}`).width + fs * 1.4, h = fs * 1.7;
-        return { clock: around(c.width / 2, M + topH + M * 0.6 + h / 2, w / 2 + 2, h / 2 + 2), score: hud("score") };
+        const tf = Math.max(10, tile * 0.3);                // the name tag under the robot (see ART.nameTag)
+        ctx.font = `bold ${tf}px "Courier New", monospace`;
+        const tw = ctx.measureText(G.me.name).width + tf + tf * 1.3, th = tf * 1.5, ty = c.height * ANCHOR_Y + tile * 0.55;
+        return { clock: around(c.width / 2, M + topH + M * 0.6 + h / 2, w / 2 + 2, h / 2 + 2), crown: around(c.width / 2, ty + th / 2, tw / 2 + 3, th / 2 + 3) };
     }],
     ["idle", () => {
         const s = hubSpot();

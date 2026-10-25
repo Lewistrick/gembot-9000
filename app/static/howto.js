@@ -11,7 +11,7 @@ const SLIDES = [
     {
         title: "You are a GemBot. Your goal is to collect gems.",
         imgs: [{ shot: "gem", marks: ["gem:ring", "gem:arrow-down"] }],
-        lines: ["Drive over a gem to mine it.", "It goes into your <b>cargo</b>).", "A mined gem is gone for <b>everyone</b>."],
+        lines: ["Drive over a gem to mine it.", "It goes into your <b>cargo</b>.", "A mined gem is gone for <b>everyone</b>."],
     },
     {
         title: "Bring gems to the base to score points.",
@@ -36,7 +36,7 @@ const SLIDES = [
     },
     {
         title: "Park on a hub to ship or travel.",
-        imgs: [{ shot: "travel", marks: ["ship:box", "travel:box"] }],
+        imgs: [{ shot: "park", marks: ["ship:box", "travel:box"] }],
         lines: ["Stand still on a hub (or the base).", "<b>SHIP</b> sends your cargo home on a cart (it shows the <b>tolls</b> on the way).", "<b>TRAVEL</b> turns travel mode on."],
     },
     {
@@ -51,16 +51,16 @@ const SLIDES = [
     },
     {
         title: "Tolls are calculated for both yourself and for cargo.",
-        imgs: [{ shot: "travel", marks: ["tollPill:box", "tollPill:arrow-down"] }],
+        imgs: [{ shot: "tolls", marks: ["ship:box", "hub:ring"] }],
         lines: ["Each hub of someone else on your trip costs <b>1</b>.", "Your own hubs and the base are free."],
     },
     {
         title: "Earn tolls from your hubs.",
-        imgs: [{ shot: "day", marks: ["score:box", "score:arrow-up"] }],
+        imgs: [{ shot: "earn", marks: ["score:box", "hub:ring"] }],
         lines: ["You earn toll from players riding over <b>your hubs</b>.", "Gems shipped over them pay you too.", "Your <b>score blinks</b> when a toll comes in."],
     },
     {
-        title: "Hubs light up the mine up to 100 tiles.",
+        title: "Hubs light up the mine for 100 tiles around them.",
         imgs: [{ shot: "dim", marks: [] }],
         lines: ["When you go further from the closest hub, it gets darker.", "At <b>150</b> you get a short warning."],
     },
@@ -86,12 +86,12 @@ const SLIDES = [
     },
     {
         title: "You can block players; just click on them.",
-        imgs: [{ shot: "chat", marks: ["other:box"] }],
+        imgs: [{ shot: "pmenu", marks: ["block:box"] }],
         lines: ["There you can <b>block</b> their chat.", "Blocking only hides bubbles for <b>you</b>."],
     },
     {
         title: "Follow a friend.",
-        imgs: [{ shot: "chat", marks: ["other:box"] }],
+        imgs: [{ shot: "follow", marks: ["arrow:ring", "nova:box"] }],
         lines: ["Tap another robot (or open the players list) and choose <b>Follow</b>.", "A <b>black arrow</b> with a stripe in their colour points at them.", "They are told. Inactive players can't be followed."],
     },
     {
@@ -100,8 +100,8 @@ const SLIDES = [
         lines: ["A <b>new mine</b> opens every day, the same for everyone.", "Up to <b>100 players</b> dig together.", "The most <b>banked</b> gems at midnight wins."],
     },
     {
-        title: "Here's some extra rules.",
-        imgs: [{ shot: "day", marks: ["clock:box"] }],
+        title: "Here are some extra rules.",
+        imgs: [{ shot: "rush", marks: ["crown:box", "clock:box"] }],
         lines: ["The winner wears a <b>crown</b> the next day.", "In the <b>last hour</b>, every gem is worth <b>double</b>.", "The clock shows how long the day has left."],
     },
     { title: "Handy keys (when you're on desktop).", custom: "keys" },
