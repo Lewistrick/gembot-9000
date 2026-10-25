@@ -15,10 +15,12 @@ function onBump(b) {
 function accent(hue) { return `hsl(${hue} 78% 52%)`; }
 
 // Name tag, then chat bubble above the robot (hidden if that player is blocked).
+const bubbleRects = new Map();   // player id -> [x, y, w, h] of the chat bubble drawn last (screen px)
 function drawRobotLabels(sx, sy, meta, now) {
     if (!meta) return;
     ART.nameTag(ctx, sx, sy + tile * 0.55, tile, meta.name, !!meta.crown);
-    if (meta.chat && !blocked.has(meta.id)) ART.bubble(ctx, sx, sy - tile * 0.55, tile, meta.chat);
+    if (meta.chat && !blocked.has(meta.id)) bubbleRects.set(meta.id, ART.bubble(ctx, sx, sy - tile * 0.55, tile, meta.chat));
+    else bubbleRects.delete(meta.id);
 }
 
 // Sparks flying off a drill tip at (tx, ty); `strength` 0..1 scales how many.

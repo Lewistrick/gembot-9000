@@ -18,7 +18,7 @@ const { chromium } = require("playwright");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "app", "static", "howto");
-const W = 720, H = 405;
+const W = 720, H = 540;   // 4:3, a little taller than the screen shape so the scene reads well on a phone
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const freePort = () => new Promise((res) => { const s = net.createServer(); s.listen(0, () => { const p = s.address().port; s.close(() => res(p)); }); });
 
@@ -40,6 +40,15 @@ function installHelpers() {
         }
     };
     const clear = (x1, y1, x2, y2) => cells(x1, y1, x2, y2).every(([x, y]) => isFloor(x, y));
+    // A rail's drawn line, with a tile of floor either side of it, so it never squeezes past rock.
+    const clearRail = (x1, y1, x2, y2) => {
+        const len = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+        for (let t = 0; t <= 1.0001; t += 0.25 / len) {
+            const px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t;
+            for (const off of [-0.7, 0, 0.7]) if (!isFloor(Math.round(px + nx * off), Math.round(py + ny * off))) return false;
+        }
+        return true;
+    };
     const heading = (fx, fy, tx, ty) => Math.atan2(tx - fx, -(ty - fy));
     const pose = (x, y, h) => {
         G.x = x; G.y = y; G.h = h; G.speed = 0;
@@ -66,6 +75,8 @@ function installHelpers() {
         G.light = [100, 250, 350]; G.showArrows = G.showMap = G.showBigMap = false;
         G.idleUntil = 0; G.mult = 1; G.leftAt = 0; G.riding = false; G.flipping = false; G.bump = 0;
         travelMode = false; railMode = null; wasDark = false; warnedFar = false;
+        G.x = G.y = 0; G.h = 0; camFrom = camTo = { x: 0, y: 0, h: 0 }; camH = 0;   // back at the base between scenes
+        for (const k of [...drilled.keys()]) if (S.lent && S.lent.has(k)) drilled.delete(k);
         payBarEl.classList.add("hidden");
         if (G.me) G.meta.set(G.me.num, { n: G.me.num, id: G.me.id, name: G.me.name, chat: "", hue: G.me.hue });
     };
@@ -74,13 +85,13 @@ function installHelpers() {
         for (let r = 13; r <= 24; r++) {
             for (let k = 0; k < 24; k++) {
                 const a = (k * Math.PI * 2) / 24, px = Math.round(Math.sin(a) * r), py = Math.round(-Math.cos(a) * r);
-                if (!isFloor(px, py) || !clear(px, py, 0, 0)) continue;
+                if (!isFloor(px, py) || !clearRail(px, py, 0, 0)) continue;
                 for (let len = 14; len >= 10; len--) {
                     for (let j = 0; j < 36; j++) {
                         const b = (j * Math.PI * 2) / 36, qx = Math.round(px + Math.sin(b) * len), qy = Math.round(py - Math.cos(b) * len);
                         const da = Math.abs(((b - heading(px, py, 0, 0) + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
                         if (da < 2.0) continue;               // keep it clearly apart from the track to the base
-                        if (Math.hypot(qx, qy) < 14 || !known(qx, qy) || !isFloor(qx, qy) || !clear(px, py, qx, qy)) continue;
+                        if (Math.hypot(qx, qy) < 14 || !known(qx, qy) || !isFloor(qx, qy) || !clearRail(px, py, qx, qy)) continue;
                         return { px, py, qx, qy, d0: Math.round(Math.hypot(px, py)), d1: len };
                     }
                 }
@@ -92,7 +103,7 @@ function installHelpers() {
         const h0 = heading(fx, fy, ax, ay), h1 = heading(fx, fy, bx, by), d = ((h1 - h0 + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
         return h0 + d / 2;
     };
-    window.S = { frames, between, wait, known, cells, clear, heading, pose, sp, around, robot, tileBox, hud, dom, gems, reset, hubSpot };
+    window.S = { frames, between, clearRail, wait, known, cells, clear, heading, pose, sp, around, robot, tileBox, hud, dom, gems, reset, hubSpot };
 }
 
 // ---- The scenes: each runs in the page and returns { marks } in screen pixels ----
@@ -125,8 +136,7 @@ const scenes = [
         for (const g of base) for (let k = 0; k < 16; k++) {
             const a = (k * Math.PI * 2) / 16, rx = Math.round(g.x - Math.sin(a) * 6), ry = Math.round(g.y + Math.cos(a) * 6);
             if (!isFloor(rx, ry) || !clear(rx, ry, g.x, g.y) || !known(rx, ry)) continue;
-            g.c.mega.add(g.x + "," + g.y);           // dress one gem up as a mega gem for the picture
-            pose(rx, ry, heading(rx, ry, g.x, g.y));
+            pose(rx, ry, heading(rx, ry, g.x, g.y));   // regular gems only: mega gems are a surprise
             G.showMap = true;
             return { found: [g.x, g.y] };
         }
@@ -137,20 +147,34 @@ const scenes = [
         return { gem: tileBox(...S.last.found, 0.9), minimap: [Math.round(M), Math.round(M + topH + M * 0.6), Math.round(side), Math.round(side)] };
     }],
     ["drill", () => {
+        // A tunnel already bored three tiles into a thick wall, the robot at its end drilling the next.
         for (let r = 14; r <= 30; r++) for (let k = 0; k < 48; k++) {
             const a = (k * Math.PI * 2) / 48, fx = Math.round(Math.sin(a) * r), fy = Math.round(-Math.cos(a) * r);
             if (!isFloor(fx, fy) || !known(fx, fy)) continue;
             for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
-                const rx = fx + dx, ry = fy + dy, bx = fx - dx, by = fy - dy;
-                if (isFloor(rx, ry) || !known(rx, ry) || !isFloor(bx, by) || !isFloor(bx - dx, by - dy) || !isFloor(bx - 2 * dx, by - 2 * dy)) continue;
-                if (isFloor(rx + dx, ry + dy)) continue;   // a thick wall, not a thin slab
-                pose(fx, fy, heading(fx, fy, rx, ry));
+                if (!isFloor(fx - dx, fy - dy) || !isFloor(fx - 2 * dx, fy - 2 * dy)) continue;   // room behind the robot
+                let solid = true;                              // rock 6 deep ahead, and 2 either side of the tunnel
+                for (let i = 1; i <= 6 && solid; i++) for (let side = -2; side <= 2 && solid; side++) {
+                    const x = fx + dx * i + dy * side, y = fy + dy * i + dx * side;
+                    if (isFloor(x, y) || !known(x, y)) solid = false;
+                }
+                if (!solid) continue;
+                const bored = [1, 2, 3].map((i) => [fx + dx * i, fy + dy * i]);
+                S.lent = new Set(bored.map(([x, y]) => x + "," + y));
+                HANDLERS.drilled({ c: bored });
+                const [ex, ey] = bored[2];
+                pose(ex, ey, heading(ex, ey, ex + dx, ey + dy));
                 G.drill = 0.62; G.cargo = 12;
-                return { found: [rx, ry] };
+                return { found: [ex + dx, ey + dy], tunnel: bored };
             }
         }
         throw new Error("no spot for the drill scene");
-    }, async () => ({ wall: tileBox(...S.last.found, 0.7), robot: robot() })],
+    }, async () => {
+        const [a0, a1] = [S.last.tunnel[0], S.last.tunnel[2]], p0 = sp(...a0), p1 = sp(...a1);
+        const x0 = Math.min(p0[0], p1[0]) - tile * 0.6, x1 = Math.max(p0[0], p1[0]) + tile * 0.6;
+        const y0 = Math.min(p0[1], p1[1]) - tile * 0.6, y1 = Math.max(p0[1], p1[1]) + tile * 0.6;
+        return { wall: tileBox(...S.last.found, 0.7), tunnel: [x0, y0, x1 - x0, y1 - y0].map(Math.round), robot: robot() };
+    }],
     ["hubbtn", () => {
         const s = hubSpot();
         if (!s) throw new Error("no spot for the hub scene");
@@ -245,8 +269,8 @@ const scenes = [
         G.meta.set(G.me.num, { n: G.me.num, id: G.me.id, name: G.me.name, chat: "who wants a hub?", hue: G.me.hue });
         return { found: [ox, oy] };
     }, async () => {
-        const o = sp(...S.last.found), c = canvas.getBoundingClientRect();
-        return { other: around(o[0], o[1] - tile * 1.9, tile * 2.6, tile * 0.8), mine: around(c.width / 2, c.height * ANCHOR_Y - tile * 1.9, tile * 2.6, tile * 0.8) };
+        const box = (id) => { const r = bubbleRects.get(id); return r && r.map(Math.round); };   // exactly where the bubbles were drawn
+        return { other: box("nova-id"), mine: box(G.me.id) };
     }],
     ["day", () => {
         const s = hubSpot();
@@ -310,7 +334,8 @@ const scenes = [
         await page.screenshot({ path: path.join(OUT, `${name}.jpg`), type: "jpeg", quality: 82, clip: { x: 0, y: 0, width: W, height: H } });
         // keep only markers whose centre is inside the picture
         const inside = (r) => r && r[0] + r[2] / 2 >= 0 && r[0] + r[2] / 2 <= W && r[1] + r[3] / 2 >= 0 && r[1] + r[3] / 2 <= H;
-        shots[name] = { file: `${name}.jpg`, w: W, h: H, marks: Object.fromEntries(Object.entries(m).filter(([, v]) => inside(v))) };
+        const gem = await page.evaluate(() => curColors().gem);    // e.g. for the floating amount on the banking slide
+        shots[name] = { file: `${name}.jpg`, w: W, h: H, gem, marks: Object.fromEntries(Object.entries(m).filter(([, v]) => inside(v))) };
         console.log(name, JSON.stringify(found.found || ""), Object.keys(shots[name].marks).join(","));
     }
     fs.writeFileSync(path.join(OUT, "shots.json"), JSON.stringify(shots, null, 1) + "\n");

@@ -750,13 +750,14 @@ function freePort() {
         const title = () => document.querySelector("#slide .stitle").textContent;
         const shown = (id) => !document.getElementById(id).classList.contains("hidden");
         out.opens = !howtoEl.classList.contains("hidden") && SLIDES.length >= 10;
-        out.oneImageThreeLines = SLIDES.every((sl) => (!sl.imgs || sl.imgs.length <= 1) && (!sl.lines || sl.lines.length <= 3));
+        out.oneImageThreeLines = SLIDES.every((sl) => (!sl.imgs || sl.imgs.length <= 1) && (!sl.lines || sl.lines.length <= 4));
         out.first = title() === "You are a GemBot. Your goal is to collect gems." && $("slideCount").textContent.startsWith("1 /");
         out.firstArrows = shown("slideNext") && !shown("slidePrev");
         out.firstPicture = !!document.querySelector("#slide img") && document.querySelectorAll("#slide .mk").length >= 2;
         $("slideNext").click();
         out.second = title() === "Bring gems to the base to score points." && shown("slidePrev") && shown("slideNext");
         const amount = document.querySelector("#slide .floatamt").textContent;
+        out.oneNumber = document.querySelectorAll("#slide .floatamt text").length === 1;
         out.randomAmount = /^\+\d+$/.test(amount) && +amount.slice(1) >= 30 && +amount.slice(1) <= 100;
         const seen = new Set();
         for (let i = 0; i < 12; i++) { await wait(2700); seen.add(document.querySelector("#slide .floatamt").textContent); if (seen.size > 1) break; }
@@ -767,6 +768,19 @@ function freePort() {
             && /Keyboard/.test(howtoSlideEl.textContent) && /Phone/.test(howtoSlideEl.textContent);
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
         out.backOne = title().startsWith("Bring gems");
+        // tapping a picture opens it full screen; it zooms, and Esc or the cross closes it
+        const viewerOpen = () => !document.getElementById("shotViewer").classList.contains("hidden");
+        document.querySelector("#slide .shot").click();
+        out.viewerOpens = viewerOpen() && !!document.querySelector("#shotViewer .vstage img");
+        const vs = document.querySelector("#shotViewer .vstage");
+        const before = vs.getBoundingClientRect().width;
+        document.getElementById("shotViewer").dispatchEvent(new WheelEvent("wheel", { deltaY: -300, clientX: innerWidth / 2, clientY: innerHeight / 2, bubbles: true, cancelable: true }));
+        out.viewerZooms = vs.getBoundingClientRect().width > before * 1.1;
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        out.viewerEsc = !viewerOpen() && !howtoEl.classList.contains("hidden");
+        document.querySelector("#slide .shot").click();
+        document.querySelector("#shotViewer .vclose").click();
+        out.viewerCross = !viewerOpen();
         // every slide renders, every picture loads, and every marker landed on its picture
         let broken = [], noMarks = [];
         for (let i = 0; i < SLIDES.length; i++) {
@@ -793,7 +807,12 @@ function freePort() {
     });
     for (const [k, what] of [
         ["opens", "How to Play opens a slideshow"],
-        ["oneImageThreeLines", "every slide has at most one picture and three lines"],
+        ["oneImageThreeLines", "every slide has at most one picture and four lines"],
+        ["oneNumber", "the banked amount on slide 2 is one number, not stacked copies"],
+        ["viewerOpens", "tapping a picture opens it full screen"],
+        ["viewerZooms", "the full-screen picture zooms in with the wheel"],
+        ["viewerEsc", "Esc closes the full-screen picture but keeps the slideshow open"],
+        ["viewerCross", "the cross closes the full-screen picture"],
         ["first", "slide 1 is 'You are a GemBot. Your goal is to collect gems.'"],
         ["firstArrows", "slide 1 has only the right arrow"],
         ["firstPicture", "slide 1 has a picture with blinking markers"],

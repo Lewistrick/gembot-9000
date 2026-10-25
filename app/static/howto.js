@@ -184,13 +184,15 @@ function markHtml(spec, rect, w, h) {
 
 function shotHtml(img) {
     const info = howtoShots && howtoShots[img.shot];
-    const w = info ? info.w : 720, h = info ? info.h : 405;
+    const w = info ? info.w : 720, h = info ? info.h : 540;
     let marks = "";
     if (info) for (const spec of img.marks) { const rect = info.marks[spec.split(":")[0]]; if (rect) marks += markHtml(spec, rect, w, h); }
     let extra = "";
     if (img.banked && info && info.marks.robot) {          // the amount that floats up when gems are banked (a new random one each time)
         const [x, y, rw] = info.marks.robot;
-        extra = `<b class="floatamt" style="left:${((x + rw / 2) / w * 100).toFixed(2)}%;top:${((y - 34) / h * 100).toFixed(2)}%"></b>`;
+        const gem = info.gem || "#2ec4ff";
+        extra = `<svg class="floatamt" viewBox="0 0 120 44" style="left:${((x + rw / 2) / w * 100).toFixed(2)}%;top:${((y - 34) / h * 100).toFixed(2)}%;filter:drop-shadow(0 0 4px ${gem})">`
+            + `<text x="60" y="32" text-anchor="middle" font-size="32" font-weight="800" fill="${gem}" stroke="#05090c" stroke-width="7" stroke-linejoin="round" paint-order="stroke"></text></svg>`;
     }
     return `<figure class="shot"><img src="${assetUrl(`static/howto/${img.shot}.jpg`)}" alt="" draggable="false" />${marks}${extra}</figure>`;
 }
@@ -205,6 +207,7 @@ function renderSlide() {
             + `<ul class="slines">${s.lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
     }
     howtoSlideEl.innerHTML = `<h3 class="stitle">${s.title}</h3><div class="sbody ${s.custom ? "custom" : `n${s.imgs.length}`}">${body}</div>`;
+    howtoSlideEl.classList.toggle("pic", !s.custom);
     howtoSlideEl.scrollTop = 0;
     markOverflow();
     for (const img of howtoSlideEl.querySelectorAll("img")) img.addEventListener("load", markOverflow, { once: true });
@@ -230,7 +233,7 @@ function startFloatAmount() {
     const el = howtoSlideEl.querySelector(".floatamt");
     if (!el) return;
     const again = () => {
-        el.textContent = `+${30 + Math.floor(Math.random() * 71)}`;
+        el.querySelector("text").textContent = `+${30 + Math.floor(Math.random() * 71)}`;
         el.classList.remove("go");
         void el.offsetWidth;                              // restart the animation
         el.classList.add("go");
@@ -268,6 +271,10 @@ howtoNext.addEventListener("click", () => goSlide(howtoIndex + 1));
 
 window.addEventListener("keydown", (e) => {
     if (document.getElementById("howto").classList.contains("hidden")) return;
+    if (!viewerEl.classList.contains("hidden")) {             // the full-screen picture first
+        if (e.key === "Escape") { e.preventDefault(); closeViewer(); }
+        return;
+    }
     if (e.key === "ArrowRight") { e.preventDefault(); goSlide(howtoIndex + 1); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); goSlide(howtoIndex - 1); }
     else if (e.key === "Escape") { e.preventDefault(); document.getElementById("backBtn").click(); }
@@ -282,3 +289,64 @@ howtoSlideEl.addEventListener("pointerup", (e) => {
     swipeFrom = null;
     if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) goSlide(howtoIndex + (dx < 0 ? 1 : -1));
 });
+
+// ---- Tap a picture to see it full screen: pinch or scroll to zoom, drag to pan ----
+const viewerEl = document.getElementById("shotViewer"), viewerStage = viewerEl.querySelector(".vstage");
+const view_ = { sc: 1, x: 0, y: 0, pointers: new Map(), moved: 0 };
+function placeViewer() {
+    const w = viewerStage.offsetWidth, h = viewerStage.offsetHeight;
+    view_.sc = Math.min(5, Math.max(1, view_.sc));
+    const mx = Math.max(0, (w * view_.sc - window.innerWidth) / 2), my = Math.max(0, (h * view_.sc - window.innerHeight) / 2);
+    view_.x = Math.min(mx, Math.max(-mx, view_.x)); view_.y = Math.min(my, Math.max(-my, view_.y));   // keep the picture on screen
+    viewerStage.style.transform = `translate(${view_.x - (w * view_.sc) / 2}px, ${view_.y - (h * view_.sc) / 2}px) scale(${view_.sc})`;
+}
+function openViewer(fig) {
+    viewerStage.replaceChildren(fig.cloneNode(true));
+    view_.sc = 1; view_.x = 0; view_.y = 0; view_.pointers.clear();
+    viewerEl.classList.remove("hidden");
+    placeViewer();
+}
+function closeViewer() { viewerEl.classList.add("hidden"); viewerStage.replaceChildren(); }
+function zoomViewerAt(px, py, factor) {           // zoom keeping the point under (px, py) in place
+    const cx = window.innerWidth / 2 + view_.x, cy = window.innerHeight / 2 + view_.y, old = view_.sc;
+    view_.sc = Math.min(5, Math.max(1, view_.sc * factor));
+    const k = view_.sc / old;
+    view_.x += (px - cx) * (1 - k); view_.y += (py - cy) * (1 - k);
+    placeViewer();
+}
+howtoSlideEl.addEventListener("click", (e) => { const fig = e.target.closest(".shot"); if (fig) openViewer(fig); });
+viewerEl.querySelector(".vclose").addEventListener("click", closeViewer);
+viewerEl.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".vclose")) return;
+    if (!view_.pointers.size) view_.moved = 0;
+    view_.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { viewerEl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+});
+viewerEl.addEventListener("pointermove", (e) => {
+    const p = view_.pointers.get(e.pointerId);
+    if (!p) return;
+    if (view_.pointers.size >= 2) {               // pinch: zoom about the midpoint, and follow it
+        const o = [...view_.pointers.entries()].find(([id]) => id !== e.pointerId)[1];
+        const before = Math.hypot(p.x - o.x, p.y - o.y), after = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+        view_.x += (e.clientX - p.x) / 2; view_.y += (e.clientY - p.y) / 2;
+        if (before > 0 && after > 0) zoomViewerAt((e.clientX + o.x) / 2, (e.clientY + o.y) / 2, after / before);
+        else placeViewer();
+    } else {
+        view_.x += e.clientX - p.x; view_.y += e.clientY - p.y;
+        placeViewer();
+    }
+    view_.moved += Math.hypot(e.clientX - p.x, e.clientY - p.y);
+    p.x = e.clientX; p.y = e.clientY;
+});
+viewerEl.addEventListener("pointerup", (e) => {
+    view_.pointers.delete(e.pointerId);
+    // a plain tap beside the picture closes it
+    if (!view_.pointers.size && view_.moved < 8 && !e.target.closest(".shot") && !e.target.closest(".vclose")) closeViewer();
+});
+viewerEl.addEventListener("pointercancel", (e) => view_.pointers.delete(e.pointerId));
+viewerEl.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    zoomViewerAt(e.clientX, e.clientY, Math.exp(-dy * 0.0015));
+}, { passive: false });
+window.addEventListener("resize", () => { if (!viewerEl.classList.contains("hidden")) placeViewer(); });
