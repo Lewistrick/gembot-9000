@@ -66,8 +66,6 @@ _SPAWN_RADIUS: int = 10
 BASE_RADIUS: int = _SPAWN_RADIUS
 """The base: gems carried into this disk around the origin are delivered."""
 
-_HUE_RATE: float = 0.0005
-"""Hue turns (0..1) per tile of distance from the origin — a very slow colour drift."""
 
 _GEM_INNER_RADIUS: float = 250.0
 """Within this distance of the origin gems are common; beyond it they are sparse."""
@@ -766,30 +764,83 @@ def _hex(r: float, g: float, b: float) -> str:
     return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
 
 
-def colors_for_seed(seed: int, distance: float = 0.0) -> dict[str, str]:
-    """Derive a floor and a rock colour from the seed.
+# Day themes: (name, floor HLS, rock HLS, gem hue). Floor is light, rock dark, and
+# the gem hue is picked to stand out from both.
+THEMES: list[
+    tuple[str, tuple[float, float, float], tuple[float, float, float], float]
+] = [
+    ("copper mine", (0.06, 0.62, 0.55), (0.07, 0.17, 0.35), 0.48),
+    ("emerald cave", (0.30, 0.60, 0.40), (0.58, 0.18, 0.18), 0.88),
+    ("ice cavern", (0.52, 0.70, 0.55), (0.62, 0.20, 0.55), 0.11),
+    ("lava", (0.03, 0.60, 0.20), (0.00, 0.14, 0.60), 0.50),
+    ("desert sandstone", (0.11, 0.66, 0.60), (0.07, 0.20, 0.40), 0.56),
+    ("amethyst", (0.76, 0.68, 0.45), (0.76, 0.16, 0.45), 0.25),
+    ("coal and gold", (0.09, 0.62, 0.12), (0.08, 0.13, 0.10), 0.13),
+    ("coral reef", (0.02, 0.68, 0.70), (0.62, 0.18, 0.55), 0.47),
+    ("jungle", (0.19, 0.58, 0.45), (0.36, 0.15, 0.45), 0.98),
+    ("glacier night", (0.58, 0.62, 0.30), (0.66, 0.13, 0.50), 0.92),
+]
+BIOME_EDGES: tuple[float, float] = (250.0, 600.0)
+"""Distances (tiles) where the inner, middle and outer biomes meet."""
+_BIOME_BLEND: float = 40.0  # width of the smooth blend across each edge
 
-    Floor and rock get *independent* hues and saturations, so a world can pair
-    (say) a sandy floor with blue-grey rock. Only the lightness is constrained:
-    floor is always light and rock always dark, keeping the two readable apart.
 
-    ``distance`` (tiles from the origin) drifts both hues very slowly, so the
-    world gradually recolours the further the player travels from the centre.
-    """
-    drift = _HUE_RATE * distance
-    floor_hue = (_rand01(seed, 0xC010) + drift) % 1.0
-    rock_hue = (_rand01(seed, 0xC013) + drift) % 1.0
-    floor_sat = 0.24 + 0.45 * _rand01(seed, 0xC011)
-    rock_sat = 0.18 + 0.40 * _rand01(seed, 0xC014)
-    floor = colorsys.hls_to_rgb(floor_hue, 0.82, floor_sat)  # always light
-    rock = colorsys.hls_to_rgb(rock_hue, 0.22, rock_sat)  # always dark
-    grid = colorsys.hls_to_rgb(floor_hue, 0.74, floor_sat)
-    # Gem colour is fixed by the seed (no distance drift) and vivid, to contrast.
-    gem = colorsys.hls_to_rgb(_rand01(seed, 0x6E72), 0.58, 0.95)
+def _clamp01(v: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    return min(hi, max(lo, v))
+
+
+def biome_themes(seed: int) -> list[int]:
+    """The three different themes (indices into THEMES) of a day's inner, middle and outer biome."""
+    left = list(range(len(THEMES)))
+    picked = []
+    for k in range(3):
+        picked.append(left.pop(int(_rand01(seed, 0xB10E, k) * len(left))))
+    return picked
+
+
+def _biome_rgb(seed: int, ring: int) -> dict[str, tuple[float, float, float]]:
+    """One biome's colours: its theme, nudged a little by the seed."""
+    _, (fh, fl, fs), (rh, rl, rs), gh = THEMES[biome_themes(seed)[ring]]
+    j = lambda k, span: (_rand01(seed, 0xC0A0 + ring * 16 + k) - 0.5) * 2 * span
+    fh, fl, fs = (
+        (fh + j(0, 0.03)) % 1.0,
+        _clamp01(fl + j(1, 0.04), 0.58, 0.72),
+        _clamp01(fs + j(2, 0.10)),
+    )
+    rh, rl, rs = (
+        (rh + j(3, 0.03)) % 1.0,
+        _clamp01(rl + j(4, 0.04), 0.12, 0.24),
+        _clamp01(rs + j(5, 0.10)),
+    )
+    gh = (gh + j(6, 0.04)) % 1.0
     return {
-        "floor": _hex(*floor),
-        "rock": _hex(*rock),
-        "grid": _hex(*grid),
-        "player": "#e53935",
-        "gem": _hex(*gem),
+        "floor": colorsys.hls_to_rgb(fh, fl, fs),
+        "rock": colorsys.hls_to_rgb(rh, rl, rs),
+        "grid": colorsys.hls_to_rgb(fh, fl - 0.08, fs),
+        "gem": colorsys.hls_to_rgb(gh, 0.58, 0.95),
     }
+
+
+def colors_for_seed(seed: int, distance: float = 0.0) -> dict[str, str]:
+    """The palette at ``distance`` tiles from the origin.
+
+    Each day has three biomes (inner, middle, outer, split at ``BIOME_EDGES``), each
+    a different hand-made theme slightly varied by the seed; colours blend smoothly
+    over ``_BIOME_BLEND`` tiles across each edge."""
+    rings = [_biome_rgb(seed, k) for k in range(3)]
+    ring, t = 0, 0.0
+    for k, edge in enumerate(BIOME_EDGES):
+        if distance >= edge + _BIOME_BLEND / 2:
+            ring = k + 1
+        elif distance > edge - _BIOME_BLEND / 2:
+            ring, t = k, (distance - (edge - _BIOME_BLEND / 2)) / _BIOME_BLEND
+            break
+    a = rings[ring]
+    b = rings[min(ring + 1, 2)]
+    t = t * t * (3 - 2 * t)  # eased
+    out = {
+        key: _hex(*(a[key][i] + (b[key][i] - a[key][i]) * t for i in range(3)))
+        for key in ("floor", "rock", "grid", "gem")
+    }
+    out["player"] = "#e53935"
+    return out
