@@ -15,7 +15,6 @@ const G = {
     me: null,                  // { id, num, name, hue }
     day: "", cap: 100, tickMs: 50, maxSpeed: 15, baseR: 10, hubCost: 25, maxTrack: 60, cargoMax: 500,
     colors: null,              // base palette from welcome
-    pal: null,                 // palette drifted by distance (from board messages)
     x: 0, y: 0, h: 0, speed: 0,
     cargo: 0, score: 0, flipping: false, bump: 0, drill: 0,   // drill: progress 0..1 while boring a wall
     rank: null, online: 0, top: [], mult: 1,
@@ -65,7 +64,8 @@ try {
     G.showMap = localStorage.getItem("gembot-map") === "1";
 } catch (e) { /* storage blocked */ }
 
-function curColors() { return G.pal || G.colors || DEFAULT_COLORS; }
+// The colours of the tile the robot is on (its biome); used by the HUD and effects.
+function curColors() { return BIOMES ? BIOMES.pals[biomeAt(Math.round(G.x), Math.round(G.y))] : G.colors || DEFAULT_COLORS; }
 
 function send(msg) {
     if (msg.action !== "resize") G.idleUntil = 0;   // any real input dismisses the idle warning
@@ -131,7 +131,7 @@ function resetClientWorld() {
     clearWorld();
     G.others.clear(); G.meta.clear(); G.toasts.length = 0; G.floats.length = 0; G.follow = G.followAt = null; G.chips.length = 0; G.crashes.length = 0; G.scoreFlash = 0; G.hubs.clear(); G.carts.clear(); G.riding = false; G.showBigMap = false; G.lightD = G.dark = 0;
     if (typeof clearRailUi === "function") clearRailUi();
-    G.pal = null; G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
+    G.cargo = G.score = 0; G.rank = null; G.idleUntil = 0;
     haveCam = false;
 }
 
@@ -185,6 +185,7 @@ const HANDLERS = {
         if (m.light) G.light = m.light;
         if (m.light_warn) G.lightWarn = m.light_warn;
         G.maxSpeed = m.max_speed; G.baseR = m.base; G.colors = m.colors; G.mult = m.mult;
+        BIOMES = m.biomes ? { pals: m.biomes, edges: m.biome_edges, ridge: m.biome_ridge, salt: m.biome_salt } : null;
         CS = m.chunk;
         G.state = "playing";
         hideAllScreens();
@@ -229,7 +230,6 @@ const HANDLERS = {
     board(m) {
         G.top = m.top; G.rank = m.you.rank; G.online = m.online; G.mult = m.mult;
         G.left = m.left; G.leftAt = performance.now();
-        G.pal = Object.assign({}, m.pal, { player: "#e53935" });
         if (typeof refreshPlayersPanel === "function") refreshPlayersPanel();
     },
     lost(m) {

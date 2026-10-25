@@ -168,7 +168,9 @@ def test_board_is_sent_once_per_epoch() -> None:
     assert not of(ca.frame([0])[0], "board")
     game.tick_count += 40
     b = of(ca.frame([0])[0], "board")[0]
-    assert b["online"] == 2 and "pal" in b
+    assert (
+        b["online"] == 2 and "pal" not in b
+    )  # colours are per tile now (welcome.biomes)
 
 
 def test_hostile_numbers_never_raise() -> None:

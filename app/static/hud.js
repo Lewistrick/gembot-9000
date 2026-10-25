@@ -212,11 +212,14 @@ function drawMinimap(cam, x, y, size) {
     ctx.fillStyle = colors.rock; ctx.fillRect(x, y, size, size);          // rock and anything not loaded yet
     ctx.translate(cx, cy); ctx.rotate(-cam.h);
     const ox = Math.round(cam.x), oy = Math.round(cam.y), n = Math.ceil(MAP_RADIUS) + 1;
-    ctx.fillStyle = colors.floor;
+    const here = colors.rock;                        // the background is the rock of where you are
     for (let j = -n; j <= n; j++) {
         for (let i = -n; i <= n; i++) {
-            if (i * i + j * j > n * n || !isFloor(ox + i, oy + j)) continue;
-            ctx.fillRect((ox + i - cam.x - 0.5) * px, (oy + j - cam.y - 0.5) * px, px + 0.6, px + 0.6);
+            if (i * i + j * j > n * n) continue;
+            const x = ox + i, y = oy + j, floor = isFloor(x, y), pal = biomePal(x, y);   // each tile in its biome's colours
+            if (!floor && pal.rock === here) continue;
+            ctx.fillStyle = floor ? pal.floor : pal.rock;
+            ctx.fillRect((x - cam.x - 0.5) * px, (y - cam.y - 0.5) * px, px + 0.6, px + 0.6);
         }
     }
     const at = (wx, wy) => [(wx - cam.x) * px, (wy - cam.y) * px];
@@ -235,7 +238,7 @@ function drawMinimap(cam, x, y, size) {
             const key = g[0] + "," + g[1];
             if (mined.has(key) || Math.hypot(g[0] - cam.x, g[1] - cam.y) > MAP_RADIUS + 2) continue;
             const [mx, my] = at(g[0], g[1]), mega = c.mega.has(key);
-            ctx.fillStyle = mega ? "#ffd64d" : colors.gem;
+            ctx.fillStyle = mega ? "#ffd64d" : biomePal(g[0], g[1]).gem;
             ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.arc(mx, my, mega ? dot * 1.6 : dot, 0, TAU); ctx.fill(); ctx.stroke();
         }
@@ -314,18 +317,19 @@ function mapZoomAt(px, py, factor, W, H) {      // zoom keeping the world point 
 function bigMapTerrain(colors) {
     const lb = loadedBounds();
     if (!lb) return null;
-    const key = `${chunkVersion}|${lb.join(",")}|${colors.floor}|${colors.rock}`;
+    const key = `${chunkVersion}|${lb.join(",")}|${BIOMES ? BIOMES.salt : colors.floor + colors.rock}`;
     if (bigMapTiles && key === bigMapKey) return bigMapTiles;
     const [x0, y0, x1, y1] = lb, w = x1 - x0 + 1, h = y1 - y0 + 1;
     const cv = bigMapTiles && bigMapTiles.canvas.width === w && bigMapTiles.canvas.height === h ? bigMapTiles.canvas : document.createElement("canvas");
     cv.width = w; cv.height = h;
     const g = cv.getContext("2d"), img = g.createImageData(w, h), d = img.data;
-    const fl = hexRgb(colors.floor), rk = hexRgb(colors.rock);
+    const pals = BIOMES ? BIOMES.pals : [colors];      // each tile in its biome's colours
+    const fls = pals.map((p) => hexRgb(p.floor)), rks = pals.map((p) => hexRgb(p.rock));
     for (const c of chunks.values()) {
         for (let j = 0; j < CS; j++) {
             for (let i = 0; i < CS; i++) {
                 const x = c.cx * CS + i, y = c.cy * CS + j, k = ((y - y0) * w + (x - x0)) * 4;
-                const col = isFloor(x, y) ? fl : rk;
+                const bi = BIOMES ? biomeAt(x, y) : 0, col = isFloor(x, y) ? fls[bi] : rks[bi];
                 d[k] = col[0]; d[k + 1] = col[1]; d[k + 2] = col[2]; d[k + 3] = 255;
             }
         }
@@ -367,7 +371,7 @@ function drawBigMap(W, H) {
             const [mx, my] = at(g[0], g[1]);
             if (mx < -20 || my < -20 || mx > W + 20 || my > H + 20) continue;
             const mega = c.mega.has(key);
-            ctx.fillStyle = mega ? "#ffd64d" : colors.gem; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 1;
+            ctx.fillStyle = mega ? "#ffd64d" : biomePal(g[0], g[1]).gem; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.arc(mx, my, mega ? dot * 1.6 : dot, 0, TAU); ctx.fill(); ctx.stroke();
         }
     }
