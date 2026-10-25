@@ -34,12 +34,11 @@ function isFloor(x, y) {
 }
 
 // ---- Biomes: which of the day's three palettes (inner, middle, outer) a tile shows ----
-// Decided per tile, from its position: the world is cut into 4x4-tile blocks, and in a
-// ridge BIOMES.ridge tiles wide around each edge the blocks of the two biomes are mixed,
-// from a few outer blocks on the inner side to a few inner ones on the outer side.
+// Decided per tile, from its position. In a ridge BIOMES.ridge tiles wide around each
+// edge the tiles of the two biomes are mixed, from a few outer tiles on the inner side to
+// a few inner ones on the outer side.
 let BIOMES = null;              // { pals: [3 palettes], edges: [250, 600], ridge: 50, salt } from welcome
-const BIOME_BLOCK = 4;
-function blockRand(salt, bx, by, k) {          // deterministic 0..1 per block (same for every player)
+function tileRand(salt, bx, by, k) {           // deterministic 0..1 per tile (same for every player)
     let h = (salt ^ Math.imul(bx, 0x27d4eb2d) ^ Math.imul(by, 0x165667b1) ^ Math.imul(k + 1, 0x9e3779b1)) | 0;
     h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
     h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
@@ -47,8 +46,7 @@ function blockRand(salt, bx, by, k) {          // deterministic 0..1 per block (
 }
 function biomeAt(x, y) {
     if (!BIOMES) return 0;
-    const bx = Math.floor(x / BIOME_BLOCK), by = Math.floor(y / BIOME_BLOCK);
-    const d = Math.hypot((bx + 0.5) * BIOME_BLOCK, (by + 0.5) * BIOME_BLOCK), half = BIOMES.ridge / 2;
+    const d = Math.hypot(x, y), half = BIOMES.ridge / 2;
     let b = 0;
     for (let k = 0; k < BIOMES.edges.length; k++) {
         const e = BIOMES.edges[k];
@@ -56,7 +54,7 @@ function biomeAt(x, y) {
         if (d > e - half) {
             let t = (d - (e - half)) / BIOMES.ridge;
             t = t * t * (3 - 2 * t);                // eased: the mix thickens towards the middle
-            if (blockRand(BIOMES.salt, bx, by, k) < t) b = k + 1;
+            if (tileRand(BIOMES.salt, x, y, k) < t) b = k + 1;
         }
         break;
     }

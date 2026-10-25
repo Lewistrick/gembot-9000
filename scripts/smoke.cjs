@@ -570,7 +570,7 @@ function freePort() {
         out.sent = !!BIOMES && BIOMES.pals.length === 3 && BIOMES.ridge === 50 && BIOMES.edges[0] === 250;
         out.pure = [0, 100, 220].every((d) => biomeAt(d, 0) === 0) && [280, 400, 570].every((d) => biomeAt(d, 0) === 1)
             && [630, 900, 2000].every((d) => biomeAt(0, -d) === 2);
-        const share = (r0, r1) => {                          // share of outer-biome blocks in a ring band
+        const share = (r0, r1) => {                          // share of outer-biome tiles in a ring band
             let n = 0, outer = 0;
             for (let a = 0; a < 2000; a++) {
                 const ang = (a / 2000) * Math.PI * 2, r = r0 + ((a * 7919) % 100) / 100 * (r1 - r0);
@@ -581,10 +581,9 @@ function freePort() {
         const s1 = share(228, 233), s2 = share(247, 253), s3 = share(267, 272);
         out.ridge = s1 < 0.15 && s2 > 0.3 && s2 < 0.7 && s3 > 0.85;
         out.ridgeNumbers = [s1, s2, s3].map((x) => x.toFixed(2)).join("/");
-        let same = true;                                     // a 4x4 block is one biome
-        for (let bx = 60; bx < 66; bx++) for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++)
-            if (biomeAt(bx * 4 + i, j) !== biomeAt(bx * 4, 0)) same = false;
-        out.blocks = same;
+        let changes = 0;                                     // per tile: neighbours in the ridge differ often
+        for (let x = 240; x < 260; x++) if (biomeAt(x, 0) !== biomeAt(x + 1, 0)) changes++;
+        out.perTile = changes >= 4;
         // draws without errors with the ridge in view (tiles, gems, minimap, big map)
         const realTick = HANDLERS.tick, saved = { from: camFrom, to: camTo, x: G.x, y: G.y };
         HANDLERS.tick = () => {};
@@ -598,8 +597,8 @@ function freePort() {
     for (const [k, what] of [
         ["sent", "the server sends the three biome palettes and the ridge"],
         ["pure", "each biome is pure away from the edges, by tile position"],
-        ["ridge", `the ridge mixes blocks gradually (${bio.ridgeNumbers})`],
-        ["blocks", "a 4x4 block is one biome"],
+        ["ridge", `the ridge mixes tiles gradually (${bio.ridgeNumbers})`],
+        ["perTile", "the ridge is mixed tile by tile, not in blocks"],
         ["hudFollows", "the HUD uses the colours of the tile you're on"],
     ]) check(bio[k] === true, what);
 
